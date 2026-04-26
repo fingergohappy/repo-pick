@@ -1,0 +1,25 @@
+# Go 编译产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# 覆盖率与性能分析输出
+coverage.out
+coverage.html
+*.prof
+
+# 常见构建与临时目录
+bin/
+build/
+dist/
+tmp/
+
+# 本机环境文件
+.DS_Store
+.env
+.env.*
+!.env.example

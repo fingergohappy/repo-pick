@@ -1,0 +1,93 @@
+<h2>三栏 TUI：自动载入仓库 + 刷新列表</h2>
+<p class="subtitle">左栏光标移动到 registry 即载入该仓库；中间栏用 r 刷新当前 skill 列表。</p>
+
+<div class="mockup">
+  <div class="mockup-header">skilldown browse</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:24% 31% 45%;min-height:410px;border:1px solid #d8dee9;background:#fff">
+      <div style="border-right:2px solid #111827;background:#f8fafc;padding:10px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:12px;color:#64748b">REGISTRY</span>
+          <span style="font-size:12px;color:#111827">active</span>
+        </div>
+        <div style="border:1px solid #d8dee9;padding:6px;margin-bottom:8px;color:#64748b">/ search registry</div>
+        <div style="background:#111827;color:#fff;padding:7px;margin-bottom:6px">› official  loading...</div>
+        <div style="padding:7px;margin-bottom:6px">  personal</div>
+        <div style="padding:7px;margin-bottom:12px">  team</div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:5px">ACTIONS</div>
+        <div style="font-family:monospace;font-size:12px;line-height:1.6;color:#334155">
+          j/k move and load<br>
+          a add registry<br>
+          / filter registry<br>
+          l focus skills
+        </div>
+      </div>
+
+      <div style="border-right:1px solid #d8dee9;padding:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:12px;color:#64748b">SKILLS</span>
+          <span style="font-size:12px;color:#64748b">2 selected</span>
+        </div>
+        <div style="border:1px solid #d8dee9;padding:6px;margin-bottom:8px;color:#64748b">/ search skills</div>
+        <div style="background:#111827;color:#fff;padding:7px;margin-bottom:6px">✓ skill-creator</div>
+        <div style="padding:7px;margin-bottom:6px">  openai-docs</div>
+        <div style="padding:7px;margin-bottom:6px">✓ git:commit</div>
+        <div style="padding:7px;margin-bottom:6px">  imagegen</div>
+        <div style="padding:7px;margin-bottom:12px">  test-driven-development</div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:5px">ACTIONS</div>
+        <div style="font-family:monospace;font-size:12px;line-height:1.6;color:#334155">
+          j/k move<br>
+          space select<br>
+          r refresh current repo<br>
+          a set skill dir path<br>
+          i install selected
+        </div>
+      </div>
+
+      <div style="padding:10px">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:10px">
+          <div>
+            <div style="font-weight:700">skill-creator</div>
+            <div style="color:#64748b;margin:4px 0 10px">Create or update Codex skills with structured workflow guidance.</div>
+          </div>
+          <div style="font-family:monospace;font-size:12px;color:#334155">? help</div>
+        </div>
+        <div style="height:1px;background:#e5e7eb;margin-bottom:10px"></div>
+        <div style="font-family:monospace;font-size:12px;line-height:1.45;color:#111827">
+          ---<br>
+          name: skill-creator<br>
+          description: Guide for creating effective skills.<br>
+          ---<br><br>
+          # Skill Creator<br><br>
+          Use when users want to create a new skill...<br><br>
+          ## Workflow<br>
+          1. Clarify purpose<br>
+          2. Draft the skill<br>
+          3. Verify behavior
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:8px;color:#64748b;font-size:12px">
+      <span>h/l move focus · j/k move item · H left pane · L right pane · ? shortcuts · q quit</span>
+      <span>target: .codex/skills · force: off</span>
+    </div>
+  </div>
+</div>
+
+<h3>下一处需要确认：自动载入策略</h3>
+<div class="options">
+  <div class="option" data-choice="load-debounce" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>推荐：停留后自动载入</h3>
+      <p>j/k 快速移动时不立刻 clone；光标停留短暂延迟后载入，避免连续触发多个仓库搜索。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="load-immediate" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>立即自动载入</h3>
+      <p>每次移动到 registry 都立刻搜索。反馈直接，但远程仓库多时可能比较吵，也容易浪费 clone。</p>
+    </div>
+  </div>
+</div>

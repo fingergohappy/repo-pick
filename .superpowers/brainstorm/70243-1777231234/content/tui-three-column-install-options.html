@@ -1,0 +1,80 @@
+<h2>三栏 TUI 草案：Registry / Skills / Preview</h2>
+<p class="subtitle">左侧选择来源，中间浏览和多选 skill，右侧展示当前 skill 的 SKILL.md 预览。</p>
+
+<div class="mockup">
+  <div class="mockup-header">skilldown browse</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:24% 31% 45%;min-height:390px;border:1px solid #d8dee9;background:#fff">
+      <div style="border-right:1px solid #d8dee9;background:#f8fafc;padding:10px">
+        <div style="font-size:12px;color:#64748b;margin-bottom:8px">REGISTRY</div>
+        <div style="background:#111827;color:#fff;padding:7px;margin-bottom:6px">› official</div>
+        <div style="padding:7px;margin-bottom:6px">  personal</div>
+        <div style="padding:7px;margin-bottom:12px">  + explicit repo</div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:5px">DETAIL</div>
+        <div style="font-family:monospace;font-size:12px;line-height:1.45;color:#334155">
+          github.com/org/skills<br>
+          dir: skills<br>
+          status: 12 found
+        </div>
+      </div>
+
+      <div style="border-right:1px solid #d8dee9;padding:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:12px;color:#64748b">SKILLS</span>
+          <span style="font-size:12px;color:#64748b">2 selected</span>
+        </div>
+        <div style="border:1px solid #d8dee9;padding:6px;margin-bottom:8px;color:#64748b">/ filter skills</div>
+        <div style="background:#111827;color:#fff;padding:7px;margin-bottom:6px">✓ skill-creator</div>
+        <div style="padding:7px;margin-bottom:6px">  openai-docs</div>
+        <div style="padding:7px;margin-bottom:6px">✓ git:commit</div>
+        <div style="padding:7px;margin-bottom:6px">  imagegen</div>
+        <div style="padding:7px;margin-bottom:6px">  test-driven-development</div>
+      </div>
+
+      <div style="padding:10px">
+        <div style="font-weight:700">skill-creator</div>
+        <div style="color:#64748b;margin:4px 0 10px">Create or update Codex skills with structured workflow guidance.</div>
+        <div style="height:1px;background:#e5e7eb;margin-bottom:10px"></div>
+        <div style="font-family:monospace;font-size:12px;line-height:1.45;color:#111827">
+          ---<br>
+          name: skill-creator<br>
+          description: Guide for creating effective skills.<br>
+          ---<br><br>
+          # Skill Creator<br><br>
+          Use when users want to create a new skill...
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:8px;color:#64748b;font-size:12px">
+      <span>tab switch pane · enter load/search · space select · / filter · q quit</span>
+      <span>target: .codex/skills · force: off</span>
+    </div>
+  </div>
+</div>
+
+<h3>安装动作放置方式</h3>
+<p class="subtitle">请选择第一版更适合的安装确认方式。</p>
+
+<div class="options">
+  <div class="option" data-choice="install-footer" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>底部快捷键安装</h3>
+      <p>按 <code>i</code> 打开安装确认弹窗，确认目标目录和是否覆盖。主界面保持浏览效率。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="install-panel" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>右侧预览底部固定按钮区</h3>
+      <p>右栏底部长期显示 Install / Force / Target 信息。更显眼，但会挤占 preview 空间。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="install-step" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>选择后进入安装步骤</h3>
+      <p>从浏览界面切到安装确认页，适合复杂配置；第一版流程会稍重。</p>
+    </div>
+  </div>
+</div>

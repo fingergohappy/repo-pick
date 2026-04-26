@@ -1,0 +1,92 @@
+<h2>三栏 TUI：Vim 快捷键版</h2>
+<p class="subtitle">按你的方向整理：左 registry，中 skills，右 preview；分栏上下文决定快捷键含义。</p>
+
+<div class="mockup">
+  <div class="mockup-header">skilldown browse</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:24% 31% 45%;min-height:410px;border:1px solid #d8dee9;background:#fff">
+      <div style="border-right:2px solid #111827;background:#f8fafc;padding:10px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:12px;color:#64748b">REGISTRY</span>
+          <span style="font-size:12px;color:#111827">active</span>
+        </div>
+        <div style="border:1px solid #d8dee9;padding:6px;margin-bottom:8px;color:#64748b">/ search registry</div>
+        <div style="background:#111827;color:#fff;padding:7px;margin-bottom:6px">› official</div>
+        <div style="padding:7px;margin-bottom:6px">  personal</div>
+        <div style="padding:7px;margin-bottom:12px">  team</div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:5px">ACTIONS</div>
+        <div style="font-family:monospace;font-size:12px;line-height:1.6;color:#334155">
+          a add registry<br>
+          O open/load repo<br>
+          j/k move<br>
+          l focus skills
+        </div>
+      </div>
+
+      <div style="border-right:1px solid #d8dee9;padding:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:12px;color:#64748b">SKILLS</span>
+          <span style="font-size:12px;color:#64748b">2 selected</span>
+        </div>
+        <div style="border:1px solid #d8dee9;padding:6px;margin-bottom:8px;color:#64748b">/ search skills</div>
+        <div style="background:#111827;color:#fff;padding:7px;margin-bottom:6px">✓ skill-creator</div>
+        <div style="padding:7px;margin-bottom:6px">  openai-docs</div>
+        <div style="padding:7px;margin-bottom:6px">✓ git:commit</div>
+        <div style="padding:7px;margin-bottom:6px">  imagegen</div>
+        <div style="padding:7px;margin-bottom:12px">  test-driven-development</div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:5px">ACTIONS</div>
+        <div style="font-family:monospace;font-size:12px;line-height:1.6;color:#334155">
+          space select<br>
+          a set dir path<br>
+          i install selected<br>
+          h/l focus panes
+        </div>
+      </div>
+
+      <div style="padding:10px">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:10px">
+          <div>
+            <div style="font-weight:700">skill-creator</div>
+            <div style="color:#64748b;margin:4px 0 10px">Create or update Codex skills with structured workflow guidance.</div>
+          </div>
+          <div style="font-family:monospace;font-size:12px;color:#334155">? help</div>
+        </div>
+        <div style="height:1px;background:#e5e7eb;margin-bottom:10px"></div>
+        <div style="font-family:monospace;font-size:12px;line-height:1.45;color:#111827">
+          ---<br>
+          name: skill-creator<br>
+          description: Guide for creating effective skills.<br>
+          ---<br><br>
+          # Skill Creator<br><br>
+          Use when users want to create a new skill...<br><br>
+          ## Workflow<br>
+          1. Clarify purpose<br>
+          2. Draft the skill<br>
+          3. Verify behavior
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:8px;color:#64748b;font-size:12px">
+      <span>h/l move focus · j/k move item · H left pane · L right pane · ? shortcuts · q quit</span>
+      <span>target: .codex/skills · force: off</span>
+    </div>
+  </div>
+</div>
+
+<h3>需要确认的一个键位语义</h3>
+<div class="options">
+  <div class="option" data-choice="o-load" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3><code>O</code> = 载入/搜索选中的仓库</h3>
+      <p>在左栏选中 registry 后，按 <code>O</code> clone/search 该仓库，并刷新中间 skill 列表。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="o-browser" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3><code>O</code> = 用系统浏览器打开仓库 URL</h3>
+      <p>TUI 只负责跳到外部仓库页面，搜索仍用 enter 或其他键触发。</p>
+    </div>
+  </div>
+</div>

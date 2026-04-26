@@ -1,0 +1,90 @@
+<h2>TUI 主界面布局方向</h2>
+<p class="subtitle">目标是支持搜索 skill、查看 SKILL.md 预览、选择并安装；先选整体交互骨架。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A. 列表 + 预览双栏</div>
+        <div class="mockup-body">
+          <div style="display:grid;grid-template-columns:36% 64%;min-height:310px;border:1px solid #d8dee9">
+            <div style="border-right:1px solid #d8dee9;padding:10px;background:#f8fafc">
+              <div style="font-weight:700;margin-bottom:8px">skills</div>
+              <div style="background:#111827;color:#fff;padding:7px;margin-bottom:6px">› skill-creator</div>
+              <div style="padding:7px;margin-bottom:6px">  git:commit</div>
+              <div style="padding:7px;margin-bottom:6px">  openai-docs</div>
+              <div style="padding:7px">  imagegen</div>
+            </div>
+            <div style="padding:10px;background:#fff">
+              <div style="font-weight:700">skill-creator</div>
+              <div style="color:#64748b;margin:4px 0 10px">Create or update Codex skills...</div>
+              <div style="height:1px;background:#e5e7eb;margin-bottom:10px"></div>
+              <div style="font-family:monospace;font-size:12px;line-height:1.45">
+                # Skill Creator<br>
+                Use when users want to create...<br><br>
+                ## Workflow<br>
+                1. Clarify purpose<br>
+                2. Draft skill...
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:8px;color:#64748b;font-size:12px">/ search  space select  i install  q quit</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>推荐：双栏浏览器</h3>
+      <p>左侧结果列表，右侧实时预览 `SKILL.md`。最适合“边看边选”，实现复杂度也可控。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B. 分步向导</div>
+        <div class="mockup-body">
+          <div style="min-height:310px;border:1px solid #d8dee9;padding:14px;background:#fff">
+            <div style="display:flex;gap:8px;margin-bottom:18px">
+              <span style="background:#111827;color:white;padding:5px 9px">1 Repo</span>
+              <span style="background:#e5e7eb;padding:5px 9px">2 Search</span>
+              <span style="background:#e5e7eb;padding:5px 9px">3 Select</span>
+              <span style="background:#e5e7eb;padding:5px 9px">4 Install</span>
+            </div>
+            <div style="font-weight:700;margin-bottom:8px">Choose source</div>
+            <div style="border:1px solid #d8dee9;padding:9px;margin-bottom:8px">Use registered repositories</div>
+            <div style="border:1px solid #111827;padding:9px;margin-bottom:8px">Enter repo URL</div>
+            <div style="border:1px solid #d8dee9;padding:9px">Manage registry</div>
+          </div>
+          <div style="margin-top:8px;color:#64748b;font-size:12px">enter next  esc back  q quit</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>分步安装向导</h3>
+      <p>每一步只做一个选择，新手友好；但预览和批量选择效率较低，也更像表单工具。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C. 命令面板式</div>
+        <div class="mockup-body">
+          <div style="min-height:310px;border:1px solid #d8dee9;padding:14px;background:#0f172a;color:#e5e7eb">
+            <div style="border:1px solid #475569;padding:9px;margin-bottom:12px">› search github.com/org/skills</div>
+            <div style="color:#94a3b8;margin-bottom:8px">Actions</div>
+            <div style="background:#e5e7eb;color:#111827;padding:8px;margin-bottom:6px">Install selected skills</div>
+            <div style="padding:8px;margin-bottom:6px">Search registered repositories</div>
+            <div style="padding:8px;margin-bottom:6px">Add repository</div>
+            <div style="padding:8px">Open preview</div>
+          </div>
+          <div style="margin-top:8px;color:#64748b;font-size:12px">ctrl+k command  enter run  tab complete</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>命令面板</h3>
+      <p>熟练用户效率高，但第一版要设计更多命令语法和模式切换，容易超出最小可用范围。</p>
+    </div>
+  </div>
+</div>

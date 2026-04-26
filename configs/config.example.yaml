@@ -1,0 +1,10 @@
+repositories:
+  - name: official
+    url: https://github.com/org/skills
+    skillDir: skills
+  - name: personal
+    url: git@github.com:finger/my-skills.git
+    skillDir: skills
+
+repo:
+  downloadDir: ""
