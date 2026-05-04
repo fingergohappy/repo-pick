@@ -9,7 +9,10 @@ import (
 	"github.com/finger/repo-pick/internal/repopick/app"
 )
 
-const paneGapAllowance = 3
+const (
+	paneGapAllowance = 3
+	minTerminalWidth = 64
+)
 
 // selectedLineStyle 是列表选中项的高亮样式。
 var selectedLineStyle = lipgloss.NewStyle().
@@ -92,6 +95,9 @@ func (m model) View() string {
 	if m.showHelp {
 		return m.helpView()
 	}
+	if m.width > 0 && m.width < minTerminalWidth {
+		return m.narrowView()
+	}
 
 	leftWidth, rightWidth := paneWidths(m.width)
 	left := m.paneView("Registry", m.registryLines(), leftWidth, m.focus == focusRegistry)
@@ -107,21 +113,35 @@ func (m model) View() string {
 
 // paneView 渲染单个带边框的栏目。
 func (m model) paneView(title string, lines []string, width int, focused bool) string {
-	style := lipgloss.NewStyle().Width(width).Height(max(8, m.height-3)).Padding(0, 1).Border(lipgloss.NormalBorder())
+	style := lipgloss.NewStyle().Width(width).Height(m.paneHeight()).Padding(0, 1).Border(lipgloss.NormalBorder())
 	if focused {
 		style = style.BorderForeground(lipgloss.Color("39"))
 	}
-	content := title + "\n" + strings.Join(lines, "\n")
+	contentWidth := paneContentWidth(width)
+	contentRows := max(1, m.paneBodyRows())
+	allLines := append([]string{truncateVisible(title, contentWidth)}, lines...)
+	if len(allLines) > contentRows {
+		allLines = allLines[:contentRows]
+	}
+	for i, line := range allLines {
+		allLines[i] = truncateVisible(firstLine(line), contentWidth)
+	}
+	content := strings.Join(allLines, "\n")
 	return style.Render(content)
 }
 
 // registryLines 生成左栏 registry 文本行。
 func (m model) registryLines() []string {
+	leftWidth, _ := paneWidths(m.width)
+	contentWidth := paneContentWidth(leftWidth)
+	lineLimit := max(1, m.paneItemRows())
 	if len(m.repositories) == 0 {
 		return m.emptyRegistryLines()
 	}
-	lines := make([]string, 0, len(m.repositories))
-	for i, repository := range m.repositories {
+	start, end := visibleWindow(len(m.repositories), m.selectedRepo, lineLimit)
+	lines := make([]string, 0, end-start)
+	for i := start; i < end; i++ {
+		repository := m.repositories[i]
 		cursor := " "
 		if i == m.selectedRepo {
 			cursor = ">"
@@ -131,6 +151,7 @@ func (m model) registryLines() []string {
 			name = fmt.Sprintf("%s [%s]", name, repository.Branch)
 		}
 		line := fmt.Sprintf("%s %s", cursor, name)
+		line = truncateVisible(line, contentWidth)
 		lines = append(lines, selectedLine(line, i == m.selectedRepo))
 	}
 	return lines
@@ -152,8 +173,11 @@ func (m model) emptyRegistryLines() []string {
 
 // treeLines 生成右栏目录树文本行。
 func (m model) treeLines() []string {
+	_, rightWidth := paneWidths(m.width)
+	contentWidth := paneContentWidth(rightWidth)
+	lineLimit := max(1, m.paneItemRows())
 	if m.treeOperationInProgress() {
-		return m.treeLoadingLines()
+		return limitLines(m.treeLoadingLines(), lineLimit)
 	}
 	if !m.repoOpened {
 		return []string{emptyEntryStyle.Render("未打开 repository")}
@@ -161,14 +185,16 @@ func (m model) treeLines() []string {
 
 	lines := m.treeContextLines()
 	lines = append(lines, m.treeSeparatorLine(), m.treeContentHeaderLine())
+	entryLimit := max(0, lineLimit-len(lines))
 
 	if m.showingSearch {
 		entries := m.visibleEntries()
 		if len(entries) == 0 {
 			return append(lines, emptyEntryStyle.Render("暂无条目"))
 		}
-		for i, entry := range entries {
-			lines = append(lines, m.searchEntryLine(entry, i == m.selectedEntry))
+		start, end := visibleWindow(len(entries), m.selectedEntry, entryLimit)
+		for i := start; i < end; i++ {
+			lines = append(lines, m.searchEntryLine(entries[i], i == m.selectedEntry, contentWidth))
 		}
 		return lines
 	}
@@ -177,8 +203,9 @@ func (m model) treeLines() []string {
 	if len(rows) == 0 {
 		return append(lines, emptyEntryStyle.Render("暂无条目"))
 	}
-	for i, row := range rows {
-		lines = append(lines, m.treeEntryLine(row, i == m.selectedEntry))
+	start, end := visibleWindow(len(rows), m.selectedEntry, entryLimit)
+	for i := start; i < end; i++ {
+		lines = append(lines, m.treeEntryLine(rows[i], i == m.selectedEntry, contentWidth))
 	}
 	return lines
 }
@@ -187,24 +214,24 @@ func (m model) treeLines() []string {
 func (m model) statusLine() string {
 	if m.mode != modeNormal {
 		if m.isAddMode() {
-			return m.status
+			return fitPlainLine(m.status, m.width)
 		}
 		if m.mode == modeSearch {
-			return m.status
+			return fitPlainLine(m.status, m.width)
 		}
 		if m.mode == modeConfirmDelete || m.mode == modeConfirmOverwrite {
-			return m.status
+			return fitPlainLine(m.status, m.width)
 		}
-		return m.prompt() + m.input.View()
+		return fitPlainLine(m.prompt()+m.input.View(), m.width)
 	}
 	if m.err != nil {
-		return m.err.Error()
+		return renderStatusLine("error: "+firstLine(m.err.Error()), "esc clear | ? help", m.width)
 	}
 	status := m.status
 	if operationStatus := m.statusOperationLine(); operationStatus != "" {
 		status = operationStatus
 	}
-	return statusTextStyle.Render(status) + statusHelpStyle.Render(" | "+m.focusHelpLine())
+	return renderStatusLine(status, m.focusHelpLine(), m.width)
 }
 
 // focusHelpLine 返回当前焦点对应的底部快捷键提示。
@@ -247,6 +274,10 @@ func (m model) treeMetaLine(label string, value string) string {
 	if value == "" {
 		value = "-"
 	}
+	_, rightWidth := paneWidths(m.width)
+	contentWidth := paneContentWidth(rightWidth)
+	labelText := label + "  "
+	value = truncateVisible(value, max(1, contentWidth-lipgloss.Width(labelText)))
 	return fmt.Sprintf("%s  %s", treeMetaLabelStyle.Render(label), treeMetaStyle.Render(value))
 }
 
@@ -259,7 +290,9 @@ func (m model) treeSeparatorLine() string {
 // treeContentHeaderLine 渲染右侧文件内容表头。
 func (m model) treeContentHeaderLine() string {
 	if m.showingSearch {
-		return treeHeaderStyle.Render(fmt.Sprintf("  %-4s %-8s %s", "type", "size", "path"))
+		_, rightWidth := paneWidths(m.width)
+		header := truncateVisible(fmt.Sprintf("  %-4s %-8s %s", "type", "size", "path"), paneContentWidth(rightWidth))
+		return treeHeaderStyle.Render(header)
 	}
 	return treeHeaderStyle.Render("  tree")
 }
@@ -332,7 +365,7 @@ func (m model) treeProgressPercentView() string {
 }
 
 // treeEntryLine 渲染右侧一个文件或目录条目。
-func (m model) treeEntryLine(row treeRow, selected bool) string {
+func (m model) treeEntryLine(row treeRow, selected bool, width int) string {
 	cursor := " "
 	if selected {
 		cursor = ">"
@@ -351,6 +384,7 @@ func (m model) treeEntryLine(row treeRow, selected bool) string {
 		name += "/"
 	}
 	line := fmt.Sprintf("%s %s%s %s%s", cursor, row.prefix, marker, name, treeEntryMeta(entry))
+	line = truncateVisible(line, width)
 	if selected {
 		return selectedLine(line, true)
 	}
@@ -369,7 +403,7 @@ func treeEntryMeta(entry app.EntryResult) string {
 }
 
 // searchEntryLine 渲染右侧一个搜索结果条目。
-func (m model) searchEntryLine(entry app.EntryResult, selected bool) string {
+func (m model) searchEntryLine(entry app.EntryResult, selected bool, width int) string {
 	cursor := " "
 	if selected {
 		cursor = ">"
@@ -379,6 +413,7 @@ func (m model) searchEntryLine(entry app.EntryResult, selected bool) string {
 		name += "/"
 	}
 	line := fmt.Sprintf("%s %-4s %-8s %s", cursor, entryIcon(entry), entrySize(entry), name)
+	line = truncateVisible(line, width)
 	if selected {
 		return selectedLine(line, true)
 	}
@@ -564,6 +599,126 @@ func (m model) prompt() string {
 	default:
 		return ""
 	}
+}
+
+// narrowView 渲染终端过窄时的提示。
+func (m model) narrowView() string {
+	message := fmt.Sprintf("terminal too narrow: need at least %d columns", minTerminalWidth)
+	return fitPlainLine(message, m.width) + "\n" + renderStatusLine(m.status, "? help", m.width)
+}
+
+// renderStatusLine 将状态和快捷键压缩到终端宽度内。
+func renderStatusLine(status string, help string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	status = firstLine(status)
+	help = firstLine(help)
+	if help == "" {
+		return statusTextStyle.Render(truncateVisible(status, width))
+	}
+
+	helpText := " | " + help
+	if lipgloss.Width(status)+lipgloss.Width(helpText) <= width {
+		return statusTextStyle.Render(status) + statusHelpStyle.Render(helpText)
+	}
+
+	compactHelp := " | ? help"
+	if lipgloss.Width(compactHelp) < width {
+		statusWidth := max(1, width-lipgloss.Width(compactHelp))
+		return statusTextStyle.Render(truncateVisible(status, statusWidth)) + statusHelpStyle.Render(compactHelp)
+	}
+	return statusTextStyle.Render(truncateVisible(status, width))
+}
+
+// fitPlainLine 将普通文本限制为单行并按宽度截断。
+func fitPlainLine(line string, width int) string {
+	return truncateVisible(firstLine(line), width)
+}
+
+// firstLine 取首行文本，避免多行错误或输入破坏状态栏布局。
+func firstLine(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	if index := strings.IndexByte(text, '\n'); index >= 0 {
+		return text[:index]
+	}
+	return text
+}
+
+// truncateVisible 按终端可见宽度截断单行文本。
+func truncateVisible(text string, width int) string {
+	text = firstLine(text)
+	if width <= 0 {
+		return ""
+	}
+	if lipgloss.Width(text) <= width {
+		return text
+	}
+	if width <= 3 {
+		return strings.Repeat(".", width)
+	}
+	suffix := "..."
+	limit := width - lipgloss.Width(suffix)
+	var builder strings.Builder
+	for _, char := range text {
+		next := builder.String() + string(char)
+		if lipgloss.Width(next) > limit {
+			break
+		}
+		builder.WriteRune(char)
+	}
+	return builder.String() + suffix
+}
+
+// limitLines 截取最多 limit 行。
+func limitLines(lines []string, limit int) []string {
+	if limit < 0 {
+		limit = 0
+	}
+	if len(lines) <= limit {
+		return lines
+	}
+	return lines[:limit]
+}
+
+// visibleWindow 返回围绕当前光标的可见列表区间。
+func visibleWindow(total int, selected int, limit int) (int, int) {
+	if total <= 0 || limit <= 0 {
+		return 0, 0
+	}
+	if total <= limit {
+		return 0, total
+	}
+	selected = clampCursor(selected, total)
+	start := selected - limit/2
+	if start < 0 {
+		start = 0
+	}
+	if start+limit > total {
+		start = total - limit
+	}
+	return start, start + limit
+}
+
+// paneHeight 返回主栏目可用高度。
+func (m model) paneHeight() int {
+	return max(8, m.height-3)
+}
+
+// paneBodyRows 返回栏目边框内的可用文本行数。
+func (m model) paneBodyRows() int {
+	return max(1, m.paneHeight()-2)
+}
+
+// paneItemRows 返回扣除栏目标题后的可用列表行数。
+func (m model) paneItemRows() int {
+	return max(1, m.paneBodyRows()-1)
+}
+
+// paneContentWidth 返回栏目边框和左右 padding 内的文本宽度。
+func paneContentWidth(width int) int {
+	return max(1, width-4)
 }
 
 // paneWidths 返回左右两栏宽度，registry 保持较窄导航区域。

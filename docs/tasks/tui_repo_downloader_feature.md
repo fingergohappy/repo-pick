@@ -28,7 +28,7 @@ scope:
 - 启动 `repo-pick` 后直接进入 TUI。
 - registry 保存用户登记的仓库名称和 URL。
 - cache 保存每个仓库的 shallow clone 完整工作区，避免每次打开都重新下载。
-- TUI 默认聚焦左侧 registry，通过 `Tab` 切换到中间目录树。
+- TUI 默认聚焦左侧 registry，通过 `ctrl-w h/l` 在 registry 和目录树之间切换焦点。
 - 用户可以用 `h/j/k/o` 在目录树中返回、移动和进入目录。
 - 用户可以下载当前选中的文件或目录。
 - `/` 搜索当前仓库的全部路径。
@@ -158,7 +158,7 @@ git clone --depth 1 --single-branch <repo-url> <cache-dir>
 ### 全局快捷键
 
 ```text
-Tab     在左侧 registry 和中间目录树之间切换焦点
+ctrl-w h/l 在左侧 registry 和中间目录树之间切换焦点
 /       搜索当前 repo 的全部路径
 Esc     关闭搜索框、确认框或错误提示
 q       退出
@@ -171,7 +171,7 @@ q       退出
 j       下移 registry 光标
 k       上移 registry 光标
 l       打开当前 registry 对应的 repo tree
-Tab     切到中间目录树；如果仓库未打开，先打开当前 registry
+ctrl-w l 切到中间目录树；如果仓库未打开，先打开当前 registry
 a       新增 registry，输入 name 和 url
 d       删除当前 registry，确认后同步删除 cache
 u       更新当前 registry 的 cache
@@ -190,7 +190,7 @@ o       当前条目是目录时进入目录；当前条目是文件时不进入
 i       下载当前文件或目录到 Session CWD
 I       输入目标目录后下载当前文件或目录
 /       搜索当前 repo 的全部路径
-Tab     切回左侧 registry
+ctrl-w h 切回左侧 registry
 ```
 
 目录树中的 `Path` 始终是相对 repo 根目录的路径。进入和返回只改变 TUI 当前路径，不触发网络请求。
@@ -329,7 +329,7 @@ func Search(root string, query string) ([]Entry, error)
 
 ### `internal/repopick/install`
 
-现有 `CopyDir` 可保留，但需要新增文件/目录统一复制能力。
+复制能力统一收敛到 `CopyEntry`，不保留目录专用双轨接口。
 
 ```go
 func (i Installer) CopyEntry(ctx context.Context, sourcePath string, targetPath string, force bool) Result
@@ -403,7 +403,7 @@ repo-pick
 ### 打开仓库
 
 ```text
-用户在左侧按 l 或 Tab
+用户在左侧按 l 或 ctrl-w l
     app.EnsureRepository(repo)
         cache 存在: 直接返回 worktree
         cache 不存在: shallow clone 完整工作区
@@ -473,7 +473,7 @@ repo-pick
 - [ ] 首次打开 repo 会 shallow clone 完整工作区到 cache。
 - [ ] 已有 cache 时打开 repo 不联网。
 - [ ] `u` 可以删除旧 cache 并重新下载；失败时不恢复旧 cache。
-- [ ] `Tab` 可以在 registry 和目录树之间切换焦点。
+- [ ] `ctrl-w h/l` 可以在 registry 和目录树之间切换焦点。
 - [ ] 目录树中 `h/j/k/o` 可以返回、移动和进入目录。
 - [ ] `/` 可以搜索当前 repo 的路径。
 - [ ] `i` 可以下载当前文件或目录到 Session CWD。

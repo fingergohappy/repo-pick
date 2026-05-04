@@ -18,39 +18,29 @@ func (m model) listRepositoriesCommand() tea.Cmd {
 	}
 }
 
-// openRepositoryCommand 创建打开仓库并读取目录树根目录的异步命令。
-func (m model) openRepositoryCommand(repo config.Repository) tea.Cmd {
-	return func() tea.Msg {
-		if _, err := m.svc.EnsureRepository(m.ctx, repo); err != nil {
-			return entriesLoadedMsg{repository: repo, err: err}
-		}
-		result, err := m.svc.ListEntries(m.ctx, app.ListEntriesRequest{Repository: repo})
-		return entriesLoadedMsg{repository: repo, path: result.DirPath, entries: result.Entries, err: err}
-	}
-}
-
 // openRepositoryProgressCommand 创建带 Git 进度的打开仓库命令。
-func (m model) openRepositoryProgressCommand(repo config.Repository, messages chan tea.Msg, baseLabel string) tea.Cmd {
+func (m model) openRepositoryProgressCommand(operationID uint64, repo config.Repository, messages chan tea.Msg, baseLabel string) tea.Cmd {
 	return func() tea.Msg {
 		defer close(messages)
 		_, err := m.svc.EnsureRepositoryWithProgress(m.ctx, repo, func(event app.ProgressEvent) {
-			sendOperationProgress(messages, operationProgressMsg{kind: operationOpen, baseLabel: baseLabel, event: event})
+			sendOperationProgress(messages, operationProgressMsg{operationID: operationID, kind: operationOpen, baseLabel: baseLabel, event: event})
 		})
 		if err != nil {
-			messages <- entriesLoadedMsg{repository: repo, err: err}
+			messages <- entriesLoadedMsg{requestID: operationID, operationKind: operationOpen, repository: repo, err: err}
 			return nil
 		}
 		result, err := m.svc.ListEntries(m.ctx, app.ListEntriesRequest{Repository: repo})
-		messages <- entriesLoadedMsg{repository: repo, path: result.DirPath, entries: result.Entries, err: err}
+		messages <- entriesLoadedMsg{requestID: operationID, operationKind: operationOpen, repository: repo, path: result.DirPath, entries: result.Entries, err: err}
 		return nil
 	}
 }
 
 // listEntriesCommand 创建读取指定目录条目的异步命令。
-func (m model) listEntriesCommand(repo config.Repository, dirPath string, selectPath string) tea.Cmd {
+func (m model) listEntriesCommand(requestID uint64, repo config.Repository, dirPath string, selectPath string) tea.Cmd {
 	return func() tea.Msg {
 		result, err := m.svc.ListEntries(m.ctx, app.ListEntriesRequest{Repository: repo, DirPath: dirPath})
 		return entriesLoadedMsg{
+			requestID:  requestID,
 			repository: repo,
 			path:       result.DirPath,
 			selectPath: selectPath,
@@ -74,36 +64,25 @@ func (m model) loadTreeChildrenCommand(repo config.Repository, dirPath string) t
 }
 
 // searchEntriesCommand 创建路径搜索异步命令。
-func (m model) searchEntriesCommand(repo config.Repository, query string) tea.Cmd {
+func (m model) searchEntriesCommand(requestID uint64, repo config.Repository, query string) tea.Cmd {
 	return func() tea.Msg {
 		result, err := m.svc.SearchEntries(m.ctx, app.SearchEntriesRequest{Repository: repo, Query: query})
-		return searchResultMsg{query: result.Query, entries: result.Entries, err: err}
-	}
-}
-
-// updateRepositoryCommand 创建删除旧 cache 并重新下载仓库的异步命令。
-func (m model) updateRepositoryCommand(repo config.Repository, dirPath string) tea.Cmd {
-	return func() tea.Msg {
-		if _, err := m.svc.UpdateRepository(m.ctx, repo); err != nil {
-			return repositoryUpdatedMsg{repository: repo, err: err}
-		}
-		result, err := m.svc.ListEntries(m.ctx, app.ListEntriesRequest{Repository: repo, DirPath: dirPath})
-		return repositoryUpdatedMsg{repository: repo, path: result.DirPath, entries: result.Entries, err: err}
+		return searchResultMsg{requestID: requestID, repository: repo, query: result.Query, entries: result.Entries, err: err}
 	}
 }
 
 // updateRepositoryProgressCommand 创建带 Git 进度的更新仓库命令。
-func (m model) updateRepositoryProgressCommand(repo config.Repository, dirPath string, messages chan tea.Msg, baseLabel string) tea.Cmd {
+func (m model) updateRepositoryProgressCommand(operationID uint64, repo config.Repository, dirPath string, messages chan tea.Msg, baseLabel string) tea.Cmd {
 	return func() tea.Msg {
 		defer close(messages)
 		if _, err := m.svc.UpdateRepositoryWithProgress(m.ctx, repo, func(event app.ProgressEvent) {
-			sendOperationProgress(messages, operationProgressMsg{kind: operationUpdate, baseLabel: baseLabel, event: event})
+			sendOperationProgress(messages, operationProgressMsg{operationID: operationID, kind: operationUpdate, baseLabel: baseLabel, event: event})
 		}); err != nil {
-			messages <- repositoryUpdatedMsg{repository: repo, err: err}
+			messages <- repositoryUpdatedMsg{operationID: operationID, repository: repo, err: err}
 			return nil
 		}
 		result, err := m.svc.ListEntries(m.ctx, app.ListEntriesRequest{Repository: repo, DirPath: dirPath})
-		messages <- repositoryUpdatedMsg{repository: repo, path: result.DirPath, entries: result.Entries, err: err}
+		messages <- repositoryUpdatedMsg{operationID: operationID, repository: repo, path: result.DirPath, entries: result.Entries, err: err}
 		return nil
 	}
 }
@@ -146,39 +125,39 @@ func (m model) listBranchesCommand(repoURL string) tea.Cmd {
 }
 
 // downloadEntryProgressCommand 创建带复制进度的下载当前条目命令。
-func (m model) downloadEntryProgressCommand(repo config.Repository, request downloadRequest, force bool, messages chan tea.Msg, baseLabel string) tea.Cmd {
+func (m model) downloadEntryProgressCommand(operationID uint64, request downloadRequest, force bool, messages chan tea.Msg, baseLabel string) tea.Cmd {
 	return func() tea.Msg {
 		defer close(messages)
 		result, err := m.svc.DownloadEntryWithProgress(m.ctx, app.DownloadEntryRequest{
-			Repository: repo,
+			Repository: request.repository,
 			Entry:      request.entry,
 			TargetDir:  request.targetDir,
 			Force:      force,
 		}, func(event app.ProgressEvent) {
-			sendOperationProgress(messages, operationProgressMsg{kind: operationDownload, baseLabel: baseLabel, event: event})
+			sendOperationProgress(messages, operationProgressMsg{operationID: operationID, kind: operationDownload, baseLabel: baseLabel, event: event})
 		})
-		messages <- downloadResultMsg{request: request, result: result, err: err}
+		messages <- downloadResultMsg{operationID: operationID, request: request, result: result, err: err}
 		return nil
 	}
 }
 
 // operationTickCommand 创建长耗时操作进度动画的下一帧命令。
-func operationTickCommand() tea.Cmd {
+func operationTickCommand(operationID uint64) tea.Cmd {
 	return tea.Tick(operationTickInterval, func(time.Time) tea.Msg {
-		return operationTickMsg{}
+		return operationTickMsg{operationID: operationID}
 	})
 }
 
 // listenOperationCommand 等待当前长耗时操作的下一条消息。
-func (m model) listenOperationCommand() tea.Cmd {
+func (m model) listenOperationCommand(operationID uint64) tea.Cmd {
 	messages := m.operationMessages
 	return func() tea.Msg {
 		if messages == nil {
-			return operationChannelClosedMsg{}
+			return operationChannelClosedMsg{operationID: operationID}
 		}
 		msg, ok := <-messages
 		if !ok {
-			return operationChannelClosedMsg{}
+			return operationChannelClosedMsg{operationID: operationID}
 		}
 		return msg
 	}

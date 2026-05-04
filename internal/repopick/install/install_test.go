@@ -115,6 +115,35 @@ func TestCopyEntryForceOnlyReplacesTarget(t *testing.T) {
 	assertFileContent(t, siblingPath, "sibling\n")
 }
 
+// TestCopyEntryForceKeepsTargetWhenSourceValidationFails 验证 force 覆盖前会先完整校验源目录。
+func TestCopyEntryForceKeepsTargetWhenSourceValidationFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows symlink permissions vary")
+	}
+	sourceDir := createSourceDir(t)
+	if err := os.Symlink("missing", filepath.Join(sourceDir, "bad-link")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	targetDir := filepath.Join(t.TempDir(), "target")
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatalf("mkdir target: %v", err)
+	}
+	existingPath := filepath.Join(targetDir, "existing.txt")
+	if err := os.WriteFile(existingPath, []byte("keep me\n"), 0o644); err != nil {
+		t.Fatalf("write existing file: %v", err)
+	}
+
+	result := Installer{}.CopyEntry(context.Background(), sourceDir, targetDir, true)
+
+	if result.Status != ResultFailed {
+		t.Fatalf("CopyEntry() status = %q, want %q", result.Status, ResultFailed)
+	}
+	if result.Err == nil || !strings.Contains(result.Err.Error(), "symlinks are not supported") {
+		t.Fatalf("CopyEntry() err = %v, want symlink validation error", result.Err)
+	}
+	assertFileContent(t, existingPath, "keep me\n")
+}
+
 // TestCopyEntryRejectsInvalidSource 验证源路径不存在或不受支持时复制失败。
 func TestCopyEntryRejectsInvalidSource(t *testing.T) {
 	targetRoot := t.TempDir()

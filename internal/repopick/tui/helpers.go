@@ -238,17 +238,42 @@ func fuzzyRuneMatch(target string, query string) bool {
 	return true
 }
 
+// nextRequestID 生成新的异步请求编号。
+func (m *model) nextRequestID() uint64 {
+	m.requestSeq++
+	return m.requestSeq
+}
+
+// invalidateSearchRequest 让尚未返回的搜索结果失效。
+func (m *model) invalidateSearchRequest() {
+	m.searchRequestID = m.nextRequestID()
+}
+
+// currentOperation 判断消息是否属于当前长耗时操作。
+func (m model) currentOperation(kind operationKind, operationID uint64) bool {
+	if kind == operationNone || m.operationKind != kind {
+		return false
+	}
+	if operationID == 0 {
+		return true
+	}
+	return m.operationID == operationID
+}
+
 // startOperation 标记一个长耗时操作开始运行。
-func (m *model) startOperation(kind operationKind, label string) {
+func (m *model) startOperation(kind operationKind, label string) uint64 {
+	operationID := m.nextRequestID()
 	m.operationKind = kind
 	m.operationLabel = strings.TrimSpace(label)
 	m.operationPercent = -1
 	m.operationFrame = 0
+	m.operationID = operationID
+	return operationID
 }
 
 // clearOperation 按类型清理长耗时操作状态。
-func (m *model) clearOperation(kind operationKind) {
-	if m.operationKind != kind {
+func (m *model) clearOperation(kind operationKind, operationID uint64) {
+	if !m.currentOperation(kind, operationID) {
 		return
 	}
 	m.operationKind = operationNone
@@ -256,6 +281,7 @@ func (m *model) clearOperation(kind operationKind) {
 	m.operationPercent = -1
 	m.operationFrame = 0
 	m.operationMessages = nil
+	m.operationID = 0
 }
 
 // operationStatus 返回当前长耗时操作的状态栏文本。

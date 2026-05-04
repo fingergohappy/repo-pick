@@ -103,8 +103,6 @@ type model struct {
 	pendingDownload *downloadRequest
 	// pendingConfirm 是当前确认框状态。
 	pendingConfirm *confirmState
-	// pendingSelectPath 是目录刷新后需要定位的条目路径。
-	pendingSelectPath string
 	// input 是新增、搜索和目标目录共用文本输入。
 	input textinput.Model
 	// status 是底部状态栏展示的最近动作结果。
@@ -129,10 +127,20 @@ type model struct {
 	operationFrame int
 	// operationMessages 是当前长耗时操作的消息流。
 	operationMessages <-chan tea.Msg
+	// requestSeq 是异步请求编号的单调计数器。
+	requestSeq uint64
+	// entriesRequestID 是当前目录读取请求编号。
+	entriesRequestID uint64
+	// searchRequestID 是当前路径搜索请求编号。
+	searchRequestID uint64
+	// operationID 是当前长耗时操作编号。
+	operationID uint64
 }
 
 // downloadRequest 保存一次待确认或待执行的下载请求。
 type downloadRequest struct {
+	// repository 是发起下载时右侧打开的仓库。
+	repository config.Repository
 	// entry 是要下载的仓库条目。
 	entry app.EntryResult
 	// targetDir 是下载目标目录。
@@ -165,6 +173,10 @@ type repositoriesLoadedMsg struct {
 }
 
 type entriesLoadedMsg struct {
+	// requestID 是本次目录读取请求编号。
+	requestID uint64
+	// operationKind 表示该目录结果是否来自长耗时操作。
+	operationKind operationKind
 	// repository 是本次加载的仓库。
 	repository config.Repository
 	// path 是本次加载的目录路径。
@@ -189,6 +201,10 @@ type treeChildrenLoadedMsg struct {
 }
 
 type searchResultMsg struct {
+	// requestID 是本次搜索请求编号。
+	requestID uint64
+	// repository 是本次搜索所属的仓库。
+	repository config.Repository
 	// query 是本次路径搜索关键词。
 	query string
 	// entries 是匹配到的文件或目录条目。
@@ -198,6 +214,8 @@ type searchResultMsg struct {
 }
 
 type repositoryUpdatedMsg struct {
+	// operationID 是本次更新操作编号。
+	operationID uint64
 	// repository 是被更新的仓库。
 	repository config.Repository
 	// entries 是更新后当前路径下的条目。
@@ -236,6 +254,8 @@ type branchesLoadedMsg struct {
 }
 
 type downloadResultMsg struct {
+	// operationID 是本次下载操作编号。
+	operationID uint64
 	// request 是本次下载请求。
 	request downloadRequest
 	// result 是 app 下载返回的结构化结果。
@@ -244,9 +264,14 @@ type downloadResultMsg struct {
 	err error
 }
 
-type operationTickMsg struct{}
+type operationTickMsg struct {
+	// operationID 是本次进度动画所属的操作编号。
+	operationID uint64
+}
 
 type operationProgressMsg struct {
+	// operationID 是本次进度所属的操作编号。
+	operationID uint64
 	// kind 是进度所属的操作类型。
 	kind operationKind
 	// baseLabel 是操作的基础展示文本。
@@ -255,7 +280,10 @@ type operationProgressMsg struct {
 	event app.ProgressEvent
 }
 
-type operationChannelClosedMsg struct{}
+type operationChannelClosedMsg struct {
+	// operationID 是已关闭消息流所属的操作编号。
+	operationID uint64
+}
 
 // newModel 创建 TUI 初始状态。
 func newModel(ctx context.Context, svc app.Service, sessionCWD string) model {
@@ -310,7 +338,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case downloadResultMsg:
 		return m.handleDownloadResult(msg)
 	case operationTickMsg:
-		return m.handleOperationTick()
+		return m.handleOperationTick(msg)
 	case operationProgressMsg:
 		return m.handleOperationProgress(msg)
 	case operationChannelClosedMsg:
@@ -338,7 +366,14 @@ func (m model) handleRepositoriesLoaded(msg repositoriesLoadedMsg) (model, tea.C
 
 // handleEntriesLoaded 将仓库目录读取结果写入右栏状态。
 func (m model) handleEntriesLoaded(msg entriesLoadedMsg) (model, tea.Cmd) {
-	m.clearOperation(operationOpen)
+	if msg.operationKind != operationNone {
+		if !m.currentOperation(msg.operationKind, msg.requestID) {
+			return m, nil
+		}
+		m.clearOperation(msg.operationKind, msg.requestID)
+	} else if msg.requestID != 0 && msg.requestID != m.entriesRequestID {
+		return m, nil
+	}
 	if msg.err != nil {
 		m.err = msg.err
 		m.status = "加载目录失败"
@@ -378,6 +413,12 @@ func (m model) handleTreeChildrenLoaded(msg treeChildrenLoadedMsg) (model, tea.C
 
 // handleSearchResult 将路径搜索结果写入右栏状态。
 func (m model) handleSearchResult(msg searchResultMsg) (model, tea.Cmd) {
+	if msg.requestID != 0 && msg.requestID != m.searchRequestID {
+		return m, nil
+	}
+	if !m.repoOpened || !sameRepository(m.openedRepo, msg.repository) {
+		return m, nil
+	}
 	if msg.err != nil {
 		m.err = msg.err
 		m.status = "搜索失败"
@@ -394,16 +435,21 @@ func (m model) handleSearchResult(msg searchResultMsg) (model, tea.Cmd) {
 
 // handleRepositoryUpdated 将 cache 更新后的目录结果写入右栏。
 func (m model) handleRepositoryUpdated(msg repositoryUpdatedMsg) (model, tea.Cmd) {
-	m.clearOperation(operationUpdate)
+	if !m.currentOperation(operationUpdate, msg.operationID) {
+		return m, nil
+	}
+	m.clearOperation(operationUpdate, msg.operationID)
 	if msg.err != nil {
 		m.err = msg.err
 		m.status = "更新仓库失败"
-		m.repoOpened = false
-		m.entries = nil
-		m.treeChildren = nil
-		m.expandedPaths = nil
-		m.searchResults = nil
-		m.showingSearch = false
+		if sameRepository(m.openedRepo, msg.repository) {
+			m.repoOpened = false
+			m.entries = nil
+			m.treeChildren = nil
+			m.expandedPaths = nil
+			m.searchResults = nil
+			m.showingSearch = false
+		}
 		return m, nil
 	}
 	m.err = nil
@@ -481,7 +527,10 @@ func (m model) handleBranchesLoaded(msg branchesLoadedMsg) (model, tea.Cmd) {
 
 // handleDownloadResult 根据下载结果展示状态或打开覆盖确认。
 func (m model) handleDownloadResult(msg downloadResultMsg) (model, tea.Cmd) {
-	m.clearOperation(operationDownload)
+	if !m.currentOperation(operationDownload, msg.operationID) {
+		return m, nil
+	}
+	m.clearOperation(operationDownload, msg.operationID)
 	if msg.err != nil {
 		if errorsIsTargetExists(msg.err) {
 			m.pendingDownload = &msg.request
@@ -500,22 +549,22 @@ func (m model) handleDownloadResult(msg downloadResultMsg) (model, tea.Cmd) {
 }
 
 // handleOperationTick 推进长耗时操作的进度动画。
-func (m model) handleOperationTick() (model, tea.Cmd) {
-	if m.operationKind == operationNone {
+func (m model) handleOperationTick(msg operationTickMsg) (model, tea.Cmd) {
+	if !m.currentOperation(m.operationKind, msg.operationID) {
 		return m, nil
 	}
 	m.operationFrame++
-	return m, operationTickCommand()
+	return m, operationTickCommand(msg.operationID)
 }
 
 // handleOperationProgress 更新长耗时操作的进度文本。
 func (m model) handleOperationProgress(msg operationProgressMsg) (model, tea.Cmd) {
-	if m.operationKind != msg.kind {
+	if !m.currentOperation(msg.kind, msg.operationID) {
 		return m, nil
 	}
 	m.operationLabel = formatOperationProgress(msg.baseLabel, msg.event)
 	m.operationPercent = msg.event.Percent
-	return m, m.listenOperationCommand()
+	return m, m.listenOperationCommand(msg.operationID)
 }
 
 // activeRepository 返回左栏当前选中的仓库。

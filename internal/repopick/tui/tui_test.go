@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -105,6 +107,7 @@ func TestCtrlWHFocusesRegistry(t *testing.T) {
 func TestStatusLineUsesFocusedPaneHelp(t *testing.T) {
 	service := testService(t, createWorktree(t), config.Config{})
 	m := openModelWithWorktree(t, service)
+	m.width = 200
 
 	treeStatus := m.statusLine()
 	if !strings.Contains(treeStatus, "l expand/collapse") || !strings.Contains(treeStatus, "o enter root") || strings.Contains(treeStatus, "r reload list") {
@@ -116,6 +119,44 @@ func TestStatusLineUsesFocusedPaneHelp(t *testing.T) {
 	registryStatus := m.statusLine()
 	if !strings.Contains(registryStatus, "r reload list") || !strings.Contains(registryStatus, "u update repo cache") || strings.Contains(registryStatus, "l expand") {
 		t.Fatalf("registry statusLine() = %q, want registry help", registryStatus)
+	}
+}
+
+// TestStatusLineSummarizesMultilineError 验证多行错误只在状态栏展示摘要。
+func TestStatusLineSummarizesMultilineError(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.width = 32
+	m.err = errors.New("git clone failed\nstderr: very long git output")
+
+	status := plainText(m.statusLine())
+
+	if strings.Contains(status, "\n") || strings.Contains(status, "stderr") {
+		t.Fatalf("statusLine() = %q, want first-line error summary", status)
+	}
+	if len(status) > m.width {
+		t.Fatalf("statusLine() width = %d, want <= %d: %q", len(status), m.width, status)
+	}
+}
+
+// TestRegistryLinesWindowAroundSelectedRepo 验证 registry 列表会围绕当前光标裁剪。
+func TestRegistryLinesWindowAroundSelectedRepo(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.height = 10
+	for i := 0; i < 40; i++ {
+		m.repositories = append(m.repositories, config.Repository{Name: fmt.Sprintf("repo-%02d", i), URL: fmt.Sprintf("repo-%02d", i)})
+	}
+	m.selectedRepo = 30
+
+	lines := strings.Join(plainLines(m.registryLines()), "\n")
+
+	if !strings.Contains(lines, "repo-30") {
+		t.Fatalf("registryLines() = %q, want selected repo in window", lines)
+	}
+	if strings.Contains(lines, "repo-00") {
+		t.Fatalf("registryLines() = %q, want clipped list window", lines)
+	}
+	if got, wantMax := len(plainLines(m.registryLines())), m.paneItemRows(); got > wantMax {
+		t.Fatalf("registryLines() length = %d, want <= %d", got, wantMax)
 	}
 }
 
@@ -201,6 +242,24 @@ func TestSearchShowsRepositoryPathResults(t *testing.T) {
 	}
 	if !strings.Contains(lines[5], "docs/guide.md") {
 		t.Fatalf("treeLines() = %#v, want search result below content header", lines)
+	}
+}
+
+// TestStaleSearchResultIsIgnored 验证过期搜索结果不会覆盖当前视图。
+func TestStaleSearchResultIsIgnored(t *testing.T) {
+	service := testService(t, createWorktree(t), config.Config{})
+	m := openModelWithWorktree(t, service)
+	m.searchRequestID = 2
+
+	m = updateModel(t, m, searchResultMsg{
+		requestID:  1,
+		repository: m.openedRepo,
+		query:      "old",
+		entries:    []app.EntryResult{{Name: "old.md", Path: "old.md", Type: app.EntryFile}},
+	})
+
+	if m.showingSearch || len(m.searchResults) != 0 {
+		t.Fatalf("search state = %v/%#v, want stale result ignored", m.showingSearch, m.searchResults)
 	}
 }
 
@@ -292,6 +351,25 @@ func TestUpdateRepositoryShowsProgress(t *testing.T) {
 	m = runOperationBatch(t, m, cmd)
 	if m.operationKind != operationNone {
 		t.Fatalf("operationKind = %v, want none after update result", m.operationKind)
+	}
+}
+
+// TestUpdateFailureForOtherRepositoryKeepsOpenedTree 验证其他仓库更新失败不会清空当前树。
+func TestUpdateFailureForOtherRepositoryKeepsOpenedTree(t *testing.T) {
+	service := testService(t, createWorktree(t), config.Config{})
+	m := openModelWithWorktree(t, service)
+	openedRepo := m.openedRepo
+	entries := append([]app.EntryResult{}, m.entries...)
+	operationID := m.startOperation(operationUpdate, "updating other")
+
+	m = updateModel(t, m, repositoryUpdatedMsg{
+		operationID: operationID,
+		repository:  config.Repository{Name: "other", URL: "other"},
+		err:         errors.New("update failed"),
+	})
+
+	if !m.repoOpened || !sameRepository(m.openedRepo, openedRepo) || len(m.entries) != len(entries) {
+		t.Fatalf("opened state = %v/%#v/%#v, want existing tree preserved", m.repoOpened, m.openedRepo, m.entries)
 	}
 }
 

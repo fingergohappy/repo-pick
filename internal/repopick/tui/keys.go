@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/finger/repo-pick/internal/repopick/app"
+	"github.com/finger/repo-pick/internal/repopick/config"
 )
 
 // handleKey 处理 TUI 快捷键。
@@ -222,7 +223,7 @@ func (m model) handleConfirmKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		if confirm.kind == confirmDelete {
 			return m, m.removeRepositoryCommand(confirm.repository)
 		}
-		if m.pendingDownload == nil || !m.repoOpened {
+		if m.pendingDownload == nil {
 			m.pendingDownload = nil
 			return m, nil
 		}
@@ -231,8 +232,8 @@ func (m model) handleConfirmKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		baseLabel := fmt.Sprintf("downloading %s", request.entry.Name)
 		messages := make(chan tea.Msg, 64)
 		m.operationMessages = messages
-		m.startOperation(operationDownload, baseLabel)
-		return m, tea.Batch(operationTickCommand(), m.listenOperationCommand(), m.downloadEntryProgressCommand(m.openedRepo, request, true, messages, baseLabel))
+		operationID := m.startOperation(operationDownload, baseLabel)
+		return m, tea.Batch(operationTickCommand(operationID), m.listenOperationCommand(operationID), m.downloadEntryProgressCommand(operationID, request, true, messages, baseLabel))
 	default:
 		return m, nil
 	}
@@ -265,8 +266,10 @@ func (m model) openSelectedRepository() (model, tea.Cmd) {
 	m.status = fmt.Sprintf("正在打开 %s", repo.Name)
 	messages := make(chan tea.Msg, 64)
 	m.operationMessages = messages
-	m.startOperation(operationOpen, baseLabel)
-	return m, tea.Batch(operationTickCommand(), m.listenOperationCommand(), m.openRepositoryProgressCommand(repo, messages, baseLabel))
+	operationID := m.startOperation(operationOpen, baseLabel)
+	m.entriesRequestID = operationID
+	m.searchRequestID = operationID
+	return m, tea.Batch(operationTickCommand(operationID), m.listenOperationCommand(operationID), m.openRepositoryProgressCommand(operationID, repo, messages, baseLabel))
 }
 
 // updateSelectedRepository 删除并重新下载左栏当前选中仓库的 cache。
@@ -284,8 +287,10 @@ func (m model) updateSelectedRepository() (model, tea.Cmd) {
 	baseLabel := fmt.Sprintf("updating repo cache: %s", repo.Name)
 	messages := make(chan tea.Msg, 64)
 	m.operationMessages = messages
-	m.startOperation(operationUpdate, baseLabel)
-	return m, tea.Batch(operationTickCommand(), m.listenOperationCommand(), m.updateRepositoryProgressCommand(repo, dirPath, messages, baseLabel))
+	operationID := m.startOperation(operationUpdate, baseLabel)
+	m.entriesRequestID = operationID
+	m.searchRequestID = operationID
+	return m, tea.Batch(operationTickCommand(operationID), m.listenOperationCommand(operationID), m.updateRepositoryProgressCommand(operationID, repo, dirPath, messages, baseLabel))
 }
 
 // startAddName 进入新增 registry 名称输入模式。
@@ -435,12 +440,15 @@ func (m model) commitInput() (model, tea.Cmd) {
 		return m.startAddBranchSelection(value)
 	case modeSearch:
 		if value == "" {
+			m.invalidateSearchRequest()
 			m.showingSearch = false
 			m.searchResults = nil
 			m.status = "已清空搜索"
 			return m, nil
 		}
-		return m, m.searchEntriesCommand(m.openedRepo, value)
+		requestID := m.nextRequestID()
+		m.searchRequestID = requestID
+		return m, m.searchEntriesCommand(requestID, m.openedRepo, value)
 	case modeTargetDir:
 		return m.downloadSelectedEntry(value)
 	default:
@@ -467,7 +475,7 @@ func (m model) openParentDirectory() (model, tea.Cmd) {
 	if parent == "." {
 		parent = ""
 	}
-	return m, m.listEntriesCommand(m.openedRepo, parent, m.currentPath)
+	return m.startEntriesRequest(m.openedRepo, parent, m.currentPath)
 }
 
 // openSelectedEntry 进入目录或定位搜索结果中的文件。
@@ -479,12 +487,12 @@ func (m model) openSelectedEntry() (model, tea.Cmd) {
 	}
 	if entry.Type != app.EntryDir {
 		if m.showingSearch {
-			return m, m.listEntriesCommand(m.openedRepo, parentPath(entry.Path), entry.Path)
+			return m.startEntriesRequest(m.openedRepo, parentPath(entry.Path), entry.Path)
 		}
 		m.status = "当前条目是文件"
 		return m, nil
 	}
-	return m, m.listEntriesCommand(m.openedRepo, entry.Path, "")
+	return m.startEntriesRequest(m.openedRepo, entry.Path, "")
 }
 
 // toggleSelectedTreeEntry 展开或收起右侧树中当前选中的目录。
@@ -535,13 +543,20 @@ func (m model) downloadSelectedEntry(targetDir string) (model, tea.Cmd) {
 		m.status = "目标目录不能为空"
 		return m, nil
 	}
-	request := downloadRequest{entry: entry, targetDir: targetDir}
+	request := downloadRequest{repository: m.openedRepo, entry: entry, targetDir: targetDir}
 	m.status = fmt.Sprintf("正在下载 %s", entry.Name)
 	baseLabel := fmt.Sprintf("downloading %s", entry.Name)
 	messages := make(chan tea.Msg, 64)
 	m.operationMessages = messages
-	m.startOperation(operationDownload, baseLabel)
-	return m, tea.Batch(operationTickCommand(), m.listenOperationCommand(), m.downloadEntryProgressCommand(m.openedRepo, request, false, messages, baseLabel))
+	operationID := m.startOperation(operationDownload, baseLabel)
+	return m, tea.Batch(operationTickCommand(operationID), m.listenOperationCommand(operationID), m.downloadEntryProgressCommand(operationID, request, false, messages, baseLabel))
+}
+
+// startEntriesRequest 发起一次带编号的目录读取请求。
+func (m model) startEntriesRequest(repo config.Repository, dirPath string, selectPath string) (model, tea.Cmd) {
+	requestID := m.nextRequestID()
+	m.entriesRequestID = requestID
+	return m, m.listEntriesCommand(requestID, repo, dirPath, selectPath)
 }
 
 // focusInput 聚焦共用文本输入框。

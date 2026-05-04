@@ -82,7 +82,8 @@ func (i Installer) CopyEntryWithProgress(ctx context.Context, sourcePath string,
 		result.Err = err
 		return result
 	}
-	if err := prepareTargetPath(targetPath, force); err != nil {
+	targetExists, err := checkTargetPath(targetPath, force)
+	if err != nil {
 		result.Err = err
 		return result
 	}
@@ -108,14 +109,32 @@ func (i Installer) CopyEntryWithProgress(ctx context.Context, sourcePath string,
 	}
 	reportProgress(sourcePath, 0)
 
+	copyTargetPath := targetPath
+	var replacement *targetReplacement
+	if targetExists && force {
+		replacement, err = newTargetReplacement(targetPath)
+		if err != nil {
+			result.Err = err
+			return result
+		}
+		defer replacement.cleanup()
+		copyTargetPath = replacement.copyPath
+	}
+
 	if info.IsDir() {
-		err = copyDir(ctx, sourcePath, targetPath, reportProgress)
+		err = copyDir(ctx, sourcePath, copyTargetPath, reportProgress)
 	} else {
-		err = copyFileWithParent(ctx, sourcePath, targetPath, info.Mode().Perm(), reportProgress)
+		err = copyFileWithParent(ctx, sourcePath, copyTargetPath, info.Mode().Perm(), reportProgress)
 	}
 	if err != nil {
 		result.Err = err
 		return result
+	}
+	if replacement != nil {
+		if err := replacement.commit(); err != nil {
+			result.Err = err
+			return result
+		}
 	}
 
 	remainingBytes := totalBytes - copiedBytes
@@ -154,19 +173,65 @@ func validateTargetPath(targetPath string) error {
 	return nil
 }
 
-// prepareTargetPath 按 force 策略处理已存在的目标文件或目录。
-func prepareTargetPath(targetPath string, force bool) error {
+// checkTargetPath 按 force 策略校验目标文件或目录，返回目标是否已经存在。
+func checkTargetPath(targetPath string, force bool) (bool, error) {
 	_, err := os.Lstat(targetPath)
 	if err == nil {
 		if !force {
-			return fmt.Errorf("%w: %q", ErrTargetExists, targetPath)
+			return true, fmt.Errorf("%w: %q", ErrTargetExists, targetPath)
 		}
-		return os.RemoveAll(targetPath)
+		return true, nil
 	}
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return false, nil
 	}
-	return fmt.Errorf("stat target path %q: %w", targetPath, err)
+	return false, fmt.Errorf("stat target path %q: %w", targetPath, err)
+}
+
+// targetReplacement 保存 force 覆盖时的临时复制路径。
+type targetReplacement struct {
+	// targetPath 是最终要替换的目标路径。
+	targetPath string
+	// tempRoot 是与目标同级的临时目录。
+	tempRoot string
+	// copyPath 是临时目录中承接复制内容的路径。
+	copyPath string
+}
+
+// newTargetReplacement 创建与目标同级的临时复制路径。
+func newTargetReplacement(targetPath string) (*targetReplacement, error) {
+	parentDir := filepath.Dir(targetPath)
+	if err := os.MkdirAll(parentDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create target parent %q: %w", parentDir, err)
+	}
+	tempRoot, err := os.MkdirTemp(parentDir, "."+filepath.Base(targetPath)+".tmp-*")
+	if err != nil {
+		return nil, fmt.Errorf("create replacement temp dir for %q: %w", targetPath, err)
+	}
+	return &targetReplacement{
+		targetPath: targetPath,
+		tempRoot:   tempRoot,
+		copyPath:   filepath.Join(tempRoot, filepath.Base(targetPath)),
+	}, nil
+}
+
+// commit 在复制成功后用临时路径替换最终目标。
+func (r *targetReplacement) commit() error {
+	if err := os.RemoveAll(r.targetPath); err != nil {
+		return fmt.Errorf("remove target path %q: %w", r.targetPath, err)
+	}
+	if err := os.Rename(r.copyPath, r.targetPath); err != nil {
+		return fmt.Errorf("replace target path %q: %w", r.targetPath, err)
+	}
+	return nil
+}
+
+// cleanup 清理未提交或提交后的临时目录。
+func (r *targetReplacement) cleanup() {
+	if r == nil {
+		return
+	}
+	_ = os.RemoveAll(r.tempRoot)
 }
 
 // totalCopyBytes 统计本次复制需要处理的普通文件总字节数。
