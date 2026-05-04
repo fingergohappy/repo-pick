@@ -1,10 +1,6 @@
 repositories:
   - name: official
-    url: https://github.com/org/skills
-    skillDir: skills
+    url: https://github.com/org/tools
   - name: personal
-    url: git@github.com:finger/my-skills.git
-    skillDir: skills
-
-repo:
-  downloadDir: ""
+    url: git@github.com:finger/my-tools.git
+    branch: main
