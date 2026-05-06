@@ -9,6 +9,7 @@ import (
 )
 
 const operationTickInterval = 120 * time.Millisecond
+const registrySelectionTickInterval = 90 * time.Millisecond
 
 // listRepositoriesCommand 创建读取 registry 列表的异步命令。
 func (m model) listRepositoriesCommand() tea.Cmd {
@@ -111,6 +112,19 @@ func (m model) addRepositoryCommand(name string, repoURL string, branch string) 
 	}
 }
 
+// editRepositoryCommand 创建编辑 registry 并重新加载列表的异步命令。
+func (m model) editRepositoryCommand(oldRepo config.Repository, name string, repoURL string, branch string) tea.Cmd {
+	return func() tea.Msg {
+		repo := config.Repository{Name: name, URL: repoURL, Branch: branch}
+		err := m.svc.EditRepository(m.ctx, app.EditRepositoryRequest{Name: oldRepo.Name, NewName: name, URL: repoURL, Branch: branch})
+		if err != nil {
+			return repositoryEditedMsg{oldRepository: oldRepo, repository: repo, err: err}
+		}
+		repositories, err := m.svc.ListRepositories(m.ctx)
+		return repositoryEditedMsg{oldRepository: oldRepo, repository: repo, repositories: repositories, err: err}
+	}
+}
+
 // listBranchesCommand 创建读取远端分支列表的异步命令。
 func (m model) listBranchesCommand(repoURL string) tea.Cmd {
 	return func() tea.Msg {
@@ -145,6 +159,13 @@ func (m model) downloadEntryProgressCommand(operationID uint64, request download
 func operationTickCommand(operationID uint64) tea.Cmd {
 	return tea.Tick(operationTickInterval, func(time.Time) tea.Msg {
 		return operationTickMsg{operationID: operationID}
+	})
+}
+
+// registrySelectionTickCommand 创建 registry 选中提示动画的下一帧命令。
+func registrySelectionTickCommand(selectionID uint64) tea.Cmd {
+	return tea.Tick(registrySelectionTickInterval, func(time.Time) tea.Msg {
+		return registrySelectionTickMsg{selectionID: selectionID}
 	})
 }
 

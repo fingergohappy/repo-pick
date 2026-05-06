@@ -77,6 +77,7 @@ Registry：
 j/k     移动
 l       打开当前仓库
 a       新增 registry；弹框中输入 name/url，并可选择远端分支
+e       编辑当前 registry；弹框中修改 name/url/branch
 r       重载 registry 列表；只重新读取配置，不更新仓库内容
 d       删除 registry，并同步删除 cache
 u       更新当前仓库 cache；删除旧 cache 并重新下载仓库内容

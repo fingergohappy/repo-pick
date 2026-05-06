@@ -179,6 +179,9 @@ func (m model) treeLines() []string {
 	if m.treeOperationInProgress() {
 		return limitLines(m.treeLoadingLines(), lineLimit)
 	}
+	if m.showRegistrySelectionPreview() {
+		return limitLines(m.registrySelectionPreviewLines(), lineLimit)
+	}
 	if !m.repoOpened {
 		return []string{emptyEntryStyle.Render("未打开 repository")}
 	}
@@ -237,7 +240,7 @@ func (m model) statusLine() string {
 // focusHelpLine 返回当前焦点对应的底部快捷键提示。
 func (m model) focusHelpLine() string {
 	if m.focus == focusRegistry {
-		return "ctrl-w h/l focus | j/k move | l open repo | a add registry | r reload list | d delete repo+cache | u update repo cache | ? help"
+		return "ctrl-w h/l focus | j/k move | l open repo | a add registry | e edit registry | r reload list | d delete repo+cache | u update repo cache | ? help"
 	}
 	return "ctrl-w h/l focus | j/k move | l expand/collapse | o enter root | h parent root | i download | / search | ? help"
 }
@@ -245,7 +248,9 @@ func (m model) focusHelpLine() string {
 // treeContextLines 生成右侧内容列表上方的仓库上下文区域。
 func (m model) treeContextLines() []string {
 	lines := []string{
-		m.treeMetaLine("repo", m.openedRepositoryLabel()),
+		m.treeMetaLine("registry", m.openedRepositoryName()),
+		m.treeMetaLine("url", m.openedRepo.URL),
+		m.treeMetaLine("branch", m.openedRepositoryBranch()),
 		m.treeMetaLine("path", displayPath(m.currentPath)),
 	}
 	if m.mode == modeSearch {
@@ -256,16 +261,18 @@ func (m model) treeContextLines() []string {
 	return lines
 }
 
-// openedRepositoryLabel 返回当前打开仓库的展示名称。
-func (m model) openedRepositoryLabel() string {
-	label := strings.TrimSpace(m.openedRepo.Name)
-	if label == "" {
-		label = "-"
+// openedRepositoryName 返回当前打开 registry 的名称。
+func (m model) openedRepositoryName() string {
+	return strings.TrimSpace(m.openedRepo.Name)
+}
+
+// openedRepositoryBranch 返回当前打开 registry 的分支展示。
+func (m model) openedRepositoryBranch() string {
+	branch := strings.TrimSpace(m.openedRepo.Branch)
+	if branch == "" {
+		return "远端默认分支"
 	}
-	if branch := strings.TrimSpace(m.openedRepo.Branch); branch != "" {
-		label = fmt.Sprintf("%s [%s]", label, branch)
-	}
-	return label
+	return branch
 }
 
 // treeMetaLine 渲染右侧上下文信息行。
@@ -318,6 +325,30 @@ func (m model) treeLoadingLines() []string {
 		centerLine(m.treeProgressPercentView(), contentWidth),
 		"",
 		centerLine(treeLoadingHintStyle.Render("cache 准备完成后会自动展示目录树"), contentWidth),
+	})
+}
+
+// registrySelectionPreviewLines 生成右侧 registry 选中变化提示。
+func (m model) registrySelectionPreviewLines() []string {
+	repo, ok := m.activeRepository()
+	if !ok {
+		return []string{emptyEntryStyle.Render("未打开 repository")}
+	}
+	_, rightWidth := paneWidths(m.width)
+	contentWidth := max(24, rightWidth-6)
+	branch := strings.TrimSpace(repo.Branch)
+	if branch == "" {
+		branch = "远端默认分支"
+	}
+
+	return m.centerTreeLoadingBlock([]string{
+		loadingTextLine("已选择 registry", contentWidth, treeLoadingTitleStyle),
+		loadingTextLine(m.registrySelectionStatus(), contentWidth, treeLoadingTextStyle),
+		"",
+		loadingTextLine("url: "+strings.TrimSpace(repo.URL), contentWidth, treeMetaStyle),
+		loadingTextLine("branch: "+branch, contentWidth, treeMetaStyle),
+		"",
+		centerLine(treeLoadingHintStyle.Render("按 l 打开该 repository"), contentWidth),
 	})
 }
 
@@ -423,17 +454,21 @@ func (m model) searchEntryLine(entry app.EntryResult, selected bool, width int) 
 	return fileEntryStyle.Render(line)
 }
 
-// isAddMode 判断当前是否处于新增 registry 弹框流程。
+// isAddMode 判断当前是否处于 registry 表单流程。
 func (m model) isAddMode() bool {
 	return m.mode == modeAddName || m.mode == modeAddURL || m.mode == modeAddBranch
 }
 
-// addRepositoryModalView 渲染新增 registry 弹框。
+// addRepositoryModalView 渲染 registry 新增或编辑弹框。
 func (m model) addRepositoryModalView() string {
 	modalWidth := max(32, min(76, m.width-4))
 	innerWidth := max(24, modalWidth-6)
+	title := "添加 Registry"
+	if m.editingRepositoryActive {
+		title = "编辑 Registry"
+	}
 	lines := []string{
-		centerLine(modalTitleStyle.Render("添加 Registry"), innerWidth),
+		centerLine(modalTitleStyle.Render(title), innerWidth),
 		modalDescStyle.Render("同一 URL 可添加多个分支；URL 和 branch 组合不能重复"),
 		modalDividerLine(innerWidth),
 	}
@@ -453,7 +488,11 @@ func (m model) addRepositoryModalView() string {
 	if m.mode == modeAddBranch {
 		lines = append(lines, m.branchSelectLines()...)
 	} else {
-		lines = append(lines, addModalFieldLine("branch", "使用远端默认分支", false))
+		branch := m.pendingBranch
+		if strings.TrimSpace(branch) == "" {
+			branch = "使用远端默认分支"
+		}
+		lines = append(lines, addModalFieldLine("branch", branch, false))
 	}
 	lines = append(lines, modalDividerLine(innerWidth), modalHintStyle.Render("Tab/Shift+Tab 切焦点   输入搜索分支   Enter 确认   Esc 取消"))
 
@@ -479,7 +518,7 @@ func modalDividerLine(width int) string {
 	return modalDividerStyle.Render(strings.Repeat("-", max(12, width)))
 }
 
-// branchSelectLines 生成新增 registry 弹框里的分支选择行。
+// branchSelectLines 生成 registry 表单里的分支选择行。
 func (m model) branchSelectLines() []string {
 	if m.branchLoading {
 		return []string{
@@ -497,7 +536,11 @@ func (m model) branchSelectLines() []string {
 		fmt.Sprintf("  %s %s", modalFieldLabelStyle.Render("search"), modalFieldValueStyle.Render(emptyPlaceholder(query, "-"))),
 	}
 	if m.branchErr != nil {
-		lines = append(lines, modalDescStyle.Render("  获取失败，Enter 使用远端默认分支"))
+		message := "  获取失败，Enter 使用远端默认分支"
+		if m.editingRepositoryActive && strings.TrimSpace(m.pendingBranch) != "" {
+			message = "  获取失败，Enter 保留当前分支"
+		}
+		lines = append(lines, modalDescStyle.Render(message))
 		return lines
 	}
 
@@ -578,7 +621,7 @@ func emptyPlaceholder(value string, placeholder string) string {
 func (m model) helpView() string {
 	return strings.Join([]string{
 		"ctrl-w h/l 切换 registry/tree   j/k 移动   q 退出",
-		"registry: l 打开仓库   a 添加 registry/选分支   r 重载列表   d 删除仓库+cache   u 更新仓库 cache",
+		"registry: l 打开仓库   a 添加 registry/选分支   e 编辑 registry   r 重载列表   d 删除仓库+cache   u 更新仓库 cache",
 		"tree: l 展开/收起目录   o 进入目录作为 root   h 返回上级 root",
 		"tree: i 下载到启动目录   I 输入目标目录",
 		"/ 搜索当前仓库路径   Esc 关闭搜索/错误/确认   ? 关闭帮助",

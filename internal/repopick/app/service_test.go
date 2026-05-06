@@ -45,6 +45,53 @@ func TestServiceRepositoryRegistryOperations(t *testing.T) {
 	}
 }
 
+func TestServiceEditRepositoryUpdatesRegistryAndDeletesOldCacheForSourceChange(t *testing.T) {
+	registrySvc := &fakeRegistry{listed: []config.Repository{{Name: "official", URL: "repo", Branch: "main"}}}
+	cacheSvc := &fakeCache{}
+	service := Service{Registry: registrySvc, Cache: cacheSvc, Installer: install.Installer{}}
+
+	err := service.EditRepository(context.Background(), EditRepositoryRequest{
+		Name:    "official",
+		NewName: "official-dev",
+		URL:     "repo",
+		Branch:  "dev",
+	})
+	if err != nil {
+		t.Fatalf("EditRepository() error = %v", err)
+	}
+
+	wantUpdated := []fakeRegistryUpdate{{
+		name: "official",
+		repo: config.Repository{Name: "official-dev", URL: "repo", Branch: "dev"},
+	}}
+	if !reflect.DeepEqual(registrySvc.updated, wantUpdated) {
+		t.Fatalf("updated repositories = %#v, want %#v", registrySvc.updated, wantUpdated)
+	}
+	if !reflect.DeepEqual(cacheSvc.deleted, []config.Repository{{Name: "official", URL: "repo", Branch: "main"}}) {
+		t.Fatalf("deleted caches = %#v, want old source cache", cacheSvc.deleted)
+	}
+}
+
+func TestServiceEditRepositoryKeepsCacheForRenameOnly(t *testing.T) {
+	registrySvc := &fakeRegistry{listed: []config.Repository{{Name: "official", URL: "repo", Branch: "main"}}}
+	cacheSvc := &fakeCache{}
+	service := Service{Registry: registrySvc, Cache: cacheSvc, Installer: install.Installer{}}
+
+	err := service.EditRepository(context.Background(), EditRepositoryRequest{
+		Name:    "official",
+		NewName: "tools",
+		URL:     "repo",
+		Branch:  "main",
+	})
+	if err != nil {
+		t.Fatalf("EditRepository() error = %v", err)
+	}
+
+	if len(cacheSvc.deleted) != 0 {
+		t.Fatalf("deleted caches = %#v, want none", cacheSvc.deleted)
+	}
+}
+
 func TestServiceListRemoteBranchesUsesCache(t *testing.T) {
 	cacheSvc := &fakeCache{branches: cache.RemoteBranches{
 		Default:  "main",
@@ -260,12 +307,21 @@ func assertForbiddenImports(t *testing.T, packagePath string, forbidden map[stri
 type fakeRegistry struct {
 	// added 记录添加过的仓库。
 	added []config.Repository
+	// updated 记录编辑过的仓库。
+	updated []fakeRegistryUpdate
 	// removed 记录删除过的仓库名称。
 	removed []string
 	// listed 是 List 返回的仓库列表。
 	listed []config.Repository
 	// err 是测试注入的 registry 错误。
 	err error
+}
+
+type fakeRegistryUpdate struct {
+	// name 是被编辑的原 registry 名称。
+	name string
+	// repo 是编辑后的 registry 配置。
+	repo config.Repository
 }
 
 // Add 记录添加请求。
@@ -283,6 +339,15 @@ func (r *fakeRegistry) List() ([]config.Repository, error) {
 		return nil, r.err
 	}
 	return r.listed, nil
+}
+
+// Update 记录编辑请求。
+func (r *fakeRegistry) Update(name string, repo config.Repository) error {
+	if r.err != nil {
+		return r.err
+	}
+	r.updated = append(r.updated, fakeRegistryUpdate{name: name, repo: repo})
+	return nil
 }
 
 // Remove 记录删除请求。

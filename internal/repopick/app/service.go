@@ -28,6 +28,8 @@ type RegistryService interface {
 	Add(config.Repository) error
 	// List 返回已注册仓库列表。
 	List() ([]config.Repository, error)
+	// Update 更新指定名称的已注册仓库。
+	Update(name string, repo config.Repository) error
 	// Remove 删除指定名称的已注册仓库。
 	Remove(name string) error
 }
@@ -58,7 +60,7 @@ type EntryInstaller interface {
 
 // Service 负责执行应用用例编排。
 type Service struct {
-	// Registry 提供 registry 添加、查看和删除能力。
+	// Registry 提供 registry 添加、查看、编辑和删除能力。
 	Registry RegistryService
 	// Cache 提供远程仓库 cache 生命周期能力。
 	Cache CacheService
@@ -73,6 +75,18 @@ type AddRepositoryRequest struct {
 	// URL 是 Git 仓库地址。
 	URL string
 	// Branch 是可选 Git 分支；为空时使用远端默认分支。
+	Branch string
+}
+
+// EditRepositoryRequest 表示编辑 registry 仓库的结构化请求。
+type EditRepositoryRequest struct {
+	// Name 是原 registry 名称。
+	Name string
+	// NewName 是编辑后的本地 registry 名称。
+	NewName string
+	// URL 是编辑后的 Git 仓库地址。
+	URL string
+	// Branch 是编辑后的可选 Git 分支；为空时使用远端默认分支。
 	Branch string
 }
 
@@ -190,6 +204,26 @@ func (s Service) AddRepository(ctx context.Context, req AddRepositoryRequest) er
 		return err
 	}
 	return s.Registry.Add(config.Repository{Name: req.Name, URL: req.URL, Branch: req.Branch})
+}
+
+// EditRepository 编辑一个 registry 仓库；来源变化时同步删除旧 cache。
+func (s Service) EditRepository(ctx context.Context, req EditRepositoryRequest) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	oldRepo, err := s.findRepository(req.Name)
+	if err != nil {
+		return err
+	}
+	newRepo := config.Repository{Name: req.NewName, URL: req.URL, Branch: req.Branch}
+	if err := s.Registry.Update(req.Name, newRepo); err != nil {
+		return err
+	}
+	if sameRepositorySource(oldRepo, newRepo) {
+		return nil
+	}
+	return s.Cache.Delete(oldRepo)
 }
 
 // ListRemoteBranches 返回远端仓库可选择的分支列表。
@@ -377,6 +411,12 @@ func cleanRepoPath(dirPath string) string {
 		return ""
 	}
 	return path.Clean(strings.TrimLeft(dirPath, "/"))
+}
+
+// sameRepositorySource 判断两个 registry 是否指向相同的远端来源。
+func sameRepositorySource(a config.Repository, b config.Repository) bool {
+	return strings.TrimSpace(a.URL) == strings.TrimSpace(b.URL) &&
+		strings.TrimSpace(a.Branch) == strings.TrimSpace(b.Branch)
 }
 
 // cacheProgressFunc 将 cache 层进度事件转换为 app 层进度事件。

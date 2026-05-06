@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -122,6 +123,26 @@ func TestStatusLineUsesFocusedPaneHelp(t *testing.T) {
 	}
 }
 
+func TestTreeContextShowsRepositoryMetadata(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.width = 120
+	m.repoOpened = true
+	m.openedRepo = config.Repository{
+		Name:   "aa",
+		URL:    "https://github.com/anthropics/skills.git",
+		Branch: "main",
+	}
+	m.currentPath = "docs"
+
+	lines := strings.Join(plainLines(m.treeContextLines()), "\n")
+
+	for _, want := range []string{"registry  aa", "url  https://github.com/anthropics/skills.git", "branch  main", "path  /docs"} {
+		if !strings.Contains(lines, want) {
+			t.Fatalf("treeContextLines() = %q, want %q", lines, want)
+		}
+	}
+}
+
 // TestStatusLineSummarizesMultilineError 验证多行错误只在状态栏展示摘要。
 func TestStatusLineSummarizesMultilineError(t *testing.T) {
 	m := newModel(context.Background(), app.Service{}, t.TempDir())
@@ -157,6 +178,65 @@ func TestRegistryLinesWindowAroundSelectedRepo(t *testing.T) {
 	}
 	if got, wantMax := len(plainLines(m.registryLines())), m.paneItemRows(); got > wantMax {
 		t.Fatalf("registryLines() length = %d, want <= %d", got, wantMax)
+	}
+}
+
+func TestRegistrySelectionShowsAnimatedPreview(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.focus = focusRegistry
+	m.repositories = []config.Repository{
+		{Name: "official", URL: "repo"},
+		{Name: "personal", URL: "repo2", Branch: "dev"},
+	}
+	m.openedRepo = m.repositories[0]
+	m.repoOpened = true
+	m.resetTreeRoot("", []app.EntryResult{{Name: "README.md", Path: "README.md", Type: app.EntryFile, Size: 6}})
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m = next.(model)
+	if cmd == nil {
+		t.Fatalf("registry selection animation command = nil")
+	}
+
+	lines := strings.Join(plainLines(m.treeLines()), "\n")
+	if !strings.Contains(lines, "已选择 registry") || !strings.Contains(lines, "personal [dev]") || !strings.Contains(lines, "repo2") {
+		t.Fatalf("treeLines() = %q, want selected registry preview", lines)
+	}
+	if strings.Contains(lines, "README.md") {
+		t.Fatalf("treeLines() = %q, should hide old opened tree while selection differs", lines)
+	}
+
+	m = updateModel(t, m, registrySelectionTickMsg{selectionID: m.registrySelectionID})
+	if m.registrySelectionFrame != 1 {
+		t.Fatalf("registrySelectionFrame = %d, want 1", m.registrySelectionFrame)
+	}
+}
+
+func TestRegistrySelectionReturnsToOpenedRegistryPreview(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.focus = focusRegistry
+	m.repositories = []config.Repository{
+		{Name: "aa", URL: "repo", Branch: "main"},
+		{Name: "bb", URL: "repo2", Branch: "dev"},
+	}
+	m.selectedRepo = 0
+	m.openedRepo = m.repositories[0]
+	m.repoOpened = true
+	m.currentPath = ""
+	m.resetTreeRoot("", []app.EntryResult{{Name: "README.md", Path: "README.md", Type: app.EntryFile, Size: 6}})
+
+	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	if lines := strings.Join(plainLines(m.treeLines()), "\n"); !strings.Contains(lines, "已选择 registry") || strings.Contains(lines, "README.md") {
+		t.Fatalf("treeLines() = %q, want registry preview after moving away", lines)
+	}
+
+	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	lines := strings.Join(plainLines(m.treeLines()), "\n")
+	if !strings.Contains(lines, "已选择 registry") || !strings.Contains(lines, "aa [main]") || !strings.Contains(lines, "按 l 打开该 repository") {
+		t.Fatalf("treeLines() = %q, want registry preview after returning to opened repo", lines)
+	}
+	if strings.Contains(lines, "README.md") {
+		t.Fatalf("treeLines() = %q, should keep registry preview instead of opened tree after j/k movement", lines)
 	}
 }
 
@@ -234,13 +314,14 @@ func TestSearchShowsRepositoryPathResults(t *testing.T) {
 		t.Fatalf("searchResults = %#v, want guide", m.searchResults)
 	}
 	lines := plainLines(m.treeLines())
-	if len(lines) < 6 || !strings.Contains(lines[2], "search") || !strings.Contains(lines[2], "guide") {
+	text := strings.Join(lines, "\n")
+	if !strings.Contains(text, "search") || !strings.Contains(text, "guide") {
 		t.Fatalf("treeLines() = %#v, want search context", lines)
 	}
-	if !strings.Contains(lines[3], "---") || !strings.Contains(lines[4], "type") {
+	if !strings.Contains(text, "---") || !strings.Contains(text, "type") {
 		t.Fatalf("treeLines() = %#v, want separator and content header", lines)
 	}
-	if !strings.Contains(lines[5], "docs/guide.md") {
+	if !strings.Contains(text, "docs/guide.md") {
 		t.Fatalf("treeLines() = %#v, want search result below content header", lines)
 	}
 }
@@ -271,11 +352,12 @@ func TestSearchInputRendersAboveFileList(t *testing.T) {
 	m.mode = modeSearch
 	m.input.SetValue("guide")
 	lines := plainLines(m.treeLines())
+	text := strings.Join(lines, "\n")
 
-	if len(lines) < 6 || !strings.Contains(lines[2], "search") || !strings.Contains(lines[2], "guide") {
+	if !strings.Contains(text, "search") || !strings.Contains(text, "guide") {
 		t.Fatalf("treeLines() = %#v, want search input in context area", lines)
 	}
-	if !strings.Contains(lines[3], "---") || !strings.Contains(lines[4], "tree") {
+	if !strings.Contains(text, "---") || !strings.Contains(text, "tree") {
 		t.Fatalf("treeLines() = %#v, want separator and header before file list", lines)
 	}
 }
@@ -297,7 +379,8 @@ func TestTreeToggleOpensDirectoryWithL(t *testing.T) {
 		t.Fatalf("visibleEntries() = %#v, want expanded docs tree", entries)
 	}
 	lines := plainLines(m.treeLines())
-	if !strings.Contains(lines[4], "├── ▾ docs/") || !strings.Contains(lines[5], "│   └── • guide.md") {
+	text := strings.Join(lines, "\n")
+	if !strings.Contains(text, "├── ▾ docs/") || !strings.Contains(text, "│   └── • guide.md") {
 		t.Fatalf("treeLines() = %#v, want expanded directory and child", lines)
 	}
 }
@@ -562,6 +645,66 @@ func TestAddRepositoryCanSearchRemoteBranch(t *testing.T) {
 
 	if got := store.cfg.Repositories[0].Branch; got != "feature/login" {
 		t.Fatalf("Branch = %q, want feature/login", got)
+	}
+}
+
+func TestEditRepositoryShowsPrefilledModalAndPersists(t *testing.T) {
+	store := &memoryStore{cfg: config.Config{
+		Repositories: []config.Repository{{Name: "official", URL: "https://github.com/org/tools", Branch: "main"}},
+	}}
+	cacheSvc := &fakeCache{
+		worktree: cache.Worktree{Dir: createWorktree(t)},
+		branches: cache.RemoteBranches{
+			Default:  "main",
+			Branches: []string{"dev", "main"},
+		},
+	}
+	service := app.Service{
+		Registry:  registry.NewService(store),
+		Cache:     cacheSvc,
+		Installer: install.Installer{},
+	}
+	m := newModel(context.Background(), service, t.TempDir())
+	m.repositories = store.cfg.Repositories
+
+	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	if m.mode != modeAddName || !m.editingRepositoryActive || m.input.Value() != "official" {
+		t.Fatalf("mode/editing/input = %v/%v/%q, want edit name for official", m.mode, m.editingRepositoryActive, m.input.Value())
+	}
+	if view := m.View(); !strings.Contains(view, "编辑 Registry") || !strings.Contains(view, "main") {
+		t.Fatalf("View() = %q, want edit modal with current branch", view)
+	}
+
+	m.input.SetValue("tools")
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	m.input.SetValue("https://github.com/org/tools")
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if cmd == nil {
+		t.Fatalf("branch command = nil")
+	}
+	m = updateModel(t, m, cmd())
+	if m.mode != modeAddBranch || m.selectedBranch != 2 {
+		t.Fatalf("mode/selectedBranch = %v/%d, want branch selection on main", m.mode, m.selectedBranch)
+	}
+
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if cmd == nil {
+		t.Fatalf("edit command = nil")
+	}
+	m = updateModel(t, m, cmd())
+
+	want := []config.Repository{{Name: "tools", URL: "https://github.com/org/tools", Branch: "main"}}
+	if !reflect.DeepEqual(store.cfg.Repositories, want) {
+		t.Fatalf("Repositories = %#v, want %#v", store.cfg.Repositories, want)
+	}
+	if m.editingRepositoryActive || m.mode != modeNormal {
+		t.Fatalf("editing/mode = %v/%v, want cleared normal mode", m.editingRepositoryActive, m.mode)
+	}
+	if len(cacheSvc.deleted) != 0 {
+		t.Fatalf("deleted caches = %#v, want none for rename", cacheSvc.deleted)
 	}
 }
 

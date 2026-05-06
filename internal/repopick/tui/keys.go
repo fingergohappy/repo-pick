@@ -70,15 +70,15 @@ func (m model) handleWindowCommandKey(msg tea.KeyMsg) (model, tea.Cmd) {
 func (m model) handleRegistryKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	switch msg.String() {
 	case "j":
-		m.selectedRepo = clampCursor(m.selectedRepo+1, len(m.repositories))
-		return m, nil
+		return m.moveRegistrySelection(1)
 	case "k":
-		m.selectedRepo = clampCursor(m.selectedRepo-1, len(m.repositories))
-		return m, nil
+		return m.moveRegistrySelection(-1)
 	case "l":
 		return m.openSelectedRepository()
 	case "a":
 		return m.startAddName()
+	case "e":
+		return m.startEditName()
 	case "r":
 		m.status = "正在刷新 registry"
 		return m, m.listRepositoriesCommand()
@@ -89,6 +89,28 @@ func (m model) handleRegistryKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	default:
 		return m, nil
 	}
+}
+
+// moveRegistrySelection 移动左侧 registry 光标并启动右侧选中提示动画。
+func (m model) moveRegistrySelection(delta int) (model, tea.Cmd) {
+	previous := m.selectedRepo
+	m.selectedRepo = clampCursor(m.selectedRepo+delta, len(m.repositories))
+	if m.selectedRepo == previous {
+		return m, nil
+	}
+	return m.startRegistrySelectionPreview()
+}
+
+// startRegistrySelectionPreview 标记当前 registry 选中提示动画开始。
+func (m model) startRegistrySelectionPreview() (model, tea.Cmd) {
+	repo, ok := m.activeRepository()
+	if !ok {
+		return m, nil
+	}
+	m.registrySelectionFrame = 0
+	m.registrySelectionID = m.nextRequestID()
+	m.status = fmt.Sprintf("已选择 registry: %s", repositoryLabel(repo))
+	return m, registrySelectionTickCommand(m.registrySelectionID)
 }
 
 // handleTreeKey 处理目录树焦点下的快捷键。
@@ -152,7 +174,7 @@ func (m model) handleModeKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	return m, cmd
 }
 
-// handleAddBranchKey 处理新增 registry 弹框中的分支选择按键。
+// handleAddBranchKey 处理 registry 表单中的分支选择按键。
 func (m model) handleAddBranchKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
@@ -197,7 +219,13 @@ func (m model) handleAddBranchKey(msg tea.KeyMsg) (model, tea.Cmd) {
 			return m.focusAddURL(repoURL)
 		}
 		branch := m.selectedBranchName()
+		if m.editingRepositoryActive && m.branchErr != nil {
+			branch = strings.TrimSpace(m.pendingBranch)
+		}
 		m.mode = modeNormal
+		if m.editingRepositoryActive {
+			return m, m.editRepositoryCommand(m.editingRepository, name, repoURL, branch)
+		}
 		return m, m.addRepositoryCommand(name, repoURL, branch)
 	default:
 		return m.updateBranchSearch(msg)
@@ -299,7 +327,23 @@ func (m model) startAddName() (model, tea.Cmd) {
 	return m.focusAddName("")
 }
 
-// focusAddName 将新增弹框焦点切到 name 输入框。
+// startEditName 进入编辑当前 registry 的名称输入模式。
+func (m model) startEditName() (model, tea.Cmd) {
+	repo, ok := m.activeRepository()
+	if !ok {
+		m.status = "没有可编辑的 registry"
+		return m, nil
+	}
+	m.clearAddState()
+	m.editingRepository = repo
+	m.editingRepositoryActive = true
+	m.pendingName = repo.Name
+	m.pendingURL = repo.URL
+	m.pendingBranch = repo.Branch
+	return m.focusAddName(repo.Name)
+}
+
+// focusAddName 将 registry 表单焦点切到 name 输入框。
 func (m model) focusAddName(value string) (model, tea.Cmd) {
 	m.mode = modeAddName
 	m.input.Placeholder = "name"
@@ -307,7 +351,7 @@ func (m model) focusAddName(value string) (model, tea.Cmd) {
 	return m.focusInput()
 }
 
-// focusAddURL 将新增弹框焦点切到 URL 输入框。
+// focusAddURL 将 registry 表单焦点切到 URL 输入框。
 func (m model) focusAddURL(value string) (model, tea.Cmd) {
 	m.mode = modeAddURL
 	m.input.Placeholder = "repo url"
@@ -315,7 +359,7 @@ func (m model) focusAddURL(value string) (model, tea.Cmd) {
 	return m.focusInput()
 }
 
-// moveAddFocus 在新增弹框的 name、URL 和 branch 区域之间移动焦点。
+// moveAddFocus 在 registry 表单的 name、URL 和 branch 区域之间移动焦点。
 func (m model) moveAddFocus(delta int) (model, tea.Cmd) {
 	switch m.mode {
 	case modeAddName:
@@ -340,7 +384,7 @@ func (m model) moveAddFocus(delta int) (model, tea.Cmd) {
 	return m, nil
 }
 
-// startAddBranchSelection 进入分支选择区域，必要时先异步读取远端分支。
+// startAddBranchSelection 进入 registry 表单分支选择区域，必要时先异步读取远端分支。
 func (m model) startAddBranchSelection(repoURL string) (model, tea.Cmd) {
 	repoURL = strings.TrimSpace(repoURL)
 	if repoURL == "" {

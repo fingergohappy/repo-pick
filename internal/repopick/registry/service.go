@@ -75,6 +75,50 @@ func (s Service) List() ([]config.Repository, error) {
 	return repositories, nil
 }
 
+// Update 更新指定名称的已注册仓库，并持久化到配置文件。
+func (s Service) Update(name string, repo config.Repository) error {
+	cfg, err := s.store.Load()
+	if err != nil {
+		return err
+	}
+
+	name = strings.TrimSpace(name)
+	repo = normalizeRepository(repo)
+	if repo.Name == "" {
+		return ErrEmptyName
+	}
+	if repo.URL == "" {
+		return ErrEmptyURL
+	}
+
+	foundIndex := -1
+	for i, existing := range cfg.Repositories {
+		if strings.TrimSpace(existing.Name) == name {
+			foundIndex = i
+			break
+		}
+	}
+	if foundIndex < 0 {
+		return ErrNotFound
+	}
+
+	for i, existing := range cfg.Repositories {
+		if i == foundIndex {
+			continue
+		}
+		existing = normalizeRepository(existing)
+		if existing.Name == repo.Name {
+			return ErrDuplicateName
+		}
+		if existing.URL == repo.URL && existing.Branch == repo.Branch {
+			return ErrDuplicateURLBranch
+		}
+	}
+
+	cfg.Repositories[foundIndex] = repo
+	return s.store.Save(cfg)
+}
+
 // Remove 删除指定名称的已注册仓库，并持久化到配置文件。
 func (s Service) Remove(name string) error {
 	cfg, err := s.store.Load()

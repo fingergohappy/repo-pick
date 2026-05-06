@@ -136,6 +136,71 @@ func TestServiceAddRejectsDuplicateURLWithDefaultBranch(t *testing.T) {
 	}
 }
 
+func TestServiceUpdatePersistsRepository(t *testing.T) {
+	store := &memoryStore{cfg: config.Config{
+		Repositories: []config.Repository{{
+			Name: "official",
+			URL:  "https://github.com/org/tools",
+		}},
+	}}
+	service := NewService(store)
+
+	err := service.Update("official", config.Repository{
+		Name:   "official-dev",
+		URL:    " https://github.com/org/tools ",
+		Branch: " dev ",
+	})
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	want := []config.Repository{{
+		Name:   "official-dev",
+		URL:    "https://github.com/org/tools",
+		Branch: "dev",
+	}}
+	if !reflect.DeepEqual(store.cfg.Repositories, want) {
+		t.Fatalf("Repositories = %#v, want %#v", store.cfg.Repositories, want)
+	}
+}
+
+func TestServiceUpdateRejectsDuplicateName(t *testing.T) {
+	store := &memoryStore{cfg: config.Config{
+		Repositories: []config.Repository{
+			{Name: "official", URL: "https://github.com/org/tools"},
+			{Name: "personal", URL: "git@github.com:finger/my-tools.git"},
+		},
+	}}
+	service := NewService(store)
+
+	err := service.Update("official", config.Repository{
+		Name: "personal",
+		URL:  "https://github.com/org/tools",
+	})
+	if !errors.Is(err, ErrDuplicateName) {
+		t.Fatalf("Update() error = %v, want ErrDuplicateName", err)
+	}
+}
+
+func TestServiceUpdateRejectsDuplicateURLAndBranch(t *testing.T) {
+	store := &memoryStore{cfg: config.Config{
+		Repositories: []config.Repository{
+			{Name: "official", URL: "https://github.com/org/tools", Branch: "main"},
+			{Name: "personal", URL: "git@github.com:finger/my-tools.git", Branch: "dev"},
+		},
+	}}
+	service := NewService(store)
+
+	err := service.Update("official", config.Repository{
+		Name:   "official",
+		URL:    "git@github.com:finger/my-tools.git",
+		Branch: "dev",
+	})
+	if !errors.Is(err, ErrDuplicateURLBranch) {
+		t.Fatalf("Update() error = %v, want ErrDuplicateURLBranch", err)
+	}
+}
+
 func TestServiceRemoveDeletesByNameAndPersists(t *testing.T) {
 	store := &memoryStore{cfg: config.Config{
 		Repositories: []config.Repository{

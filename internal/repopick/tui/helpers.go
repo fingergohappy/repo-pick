@@ -11,6 +11,7 @@ import (
 )
 
 var operationFrames = []string{"-", "\\", "|", "/"}
+var registrySelectionFrames = []string{">  ", ">> ", ">>>", " >>", "  >"}
 
 // clampCursor 将光标限制在可见列表范围内。
 func clampCursor(cursor int, length int) int {
@@ -114,6 +115,40 @@ func sameRepository(a config.Repository, b config.Repository) bool {
 		strings.TrimSpace(a.Branch) == strings.TrimSpace(b.Branch)
 }
 
+// repositoryLabel 返回 registry 在界面中的名称展示。
+func repositoryLabel(repo config.Repository) string {
+	label := strings.TrimSpace(repo.Name)
+	if label == "" {
+		label = "-"
+	}
+	if branch := strings.TrimSpace(repo.Branch); branch != "" {
+		label = fmt.Sprintf("%s [%s]", label, branch)
+	}
+	return label
+}
+
+// sameRepositorySource 判断两个 registry 是否指向同一个远端来源。
+func sameRepositorySource(a config.Repository, b config.Repository) bool {
+	return strings.TrimSpace(a.URL) == strings.TrimSpace(b.URL) &&
+		strings.TrimSpace(a.Branch) == strings.TrimSpace(b.Branch)
+}
+
+// sameOpenedRepository 判断 registry 是否对应右侧已经打开的目录树。
+func sameOpenedRepository(active config.Repository, opened config.Repository) bool {
+	return sameRepository(active, opened) || sameRepositorySource(active, opened)
+}
+
+// indexForRepositoryName 返回指定 registry 名称在列表中的位置。
+func indexForRepositoryName(repositories []config.Repository, name string) int {
+	name = strings.TrimSpace(name)
+	for i, repo := range repositories {
+		if strings.TrimSpace(repo.Name) == name {
+			return i
+		}
+	}
+	return clampCursor(0, len(repositories))
+}
+
 // displayPath 将空仓库路径展示为根目录。
 func displayPath(repoPath string) string {
 	repoPath = strings.TrimSpace(repoPath)
@@ -157,17 +192,20 @@ func errorsIsTargetExists(err error) bool {
 	return errors.Is(err, app.ErrTargetExists)
 }
 
-// clearAddState 清理新增 registry 弹框的临时状态。
+// clearAddState 清理 registry 表单的临时状态。
 func (m *model) clearAddState() {
 	m.mode = modeNormal
 	m.pendingName = ""
 	m.pendingURL = ""
+	m.pendingBranch = ""
 	m.pendingBranches = nil
 	m.pendingDefaultBranch = ""
 	m.branchQuery = ""
 	m.selectedBranch = 0
 	m.branchLoading = false
 	m.branchErr = nil
+	m.editingRepository = config.Repository{}
+	m.editingRepositoryActive = false
 	m.input.Blur()
 }
 
@@ -208,6 +246,14 @@ func (m model) filteredBranchNames() []string {
 
 // defaultBranchSelection 返回当前搜索条件下默认选中的分支行。
 func (m model) defaultBranchSelection() int {
+	pendingBranch := strings.TrimSpace(m.pendingBranch)
+	if pendingBranch != "" {
+		for i, branch := range m.branchChoiceNames() {
+			if branch == pendingBranch {
+				return i
+			}
+		}
+	}
 	if strings.TrimSpace(m.branchQuery) != "" && len(m.filteredBranchNames()) > 0 {
 		return 1
 	}
@@ -299,6 +345,31 @@ func (m model) operationStatus() string {
 // treeOperationInProgress 判断当前长耗时操作是否应在右侧树面板展示。
 func (m model) treeOperationInProgress() bool {
 	return m.operationKind == operationOpen || m.operationKind == operationUpdate
+}
+
+// showRegistrySelectionPreview 判断右侧是否展示 registry 选中变化提示。
+func (m model) showRegistrySelectionPreview() bool {
+	if m.mode != modeNormal || m.focus != focusRegistry || m.treeOperationInProgress() {
+		return false
+	}
+	repo, ok := m.activeRepository()
+	if !ok {
+		return false
+	}
+	if m.registrySelectionID != 0 {
+		return true
+	}
+	return !m.repoOpened || !sameOpenedRepository(repo, m.openedRepo)
+}
+
+// registrySelectionStatus 返回 registry 选中变化提示动画文本。
+func (m model) registrySelectionStatus() string {
+	frame := registrySelectionFrames[m.registrySelectionFrame%len(registrySelectionFrames)]
+	repo, ok := m.activeRepository()
+	if !ok {
+		return frame + " registry"
+	}
+	return fmt.Sprintf("%s %s", frame, repositoryLabel(repo))
 }
 
 // statusOperationLine 返回仍应放在底部状态栏的长耗时操作文本。

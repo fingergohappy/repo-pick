@@ -83,22 +83,28 @@ type model struct {
 	searchResults []app.EntryResult
 	// showingSearch 表示右栏当前是否展示搜索结果。
 	showingSearch bool
-	// pendingName 是新增 registry 时已输入的名称。
+	// pendingName 是 registry 表单中当前待提交的名称。
 	pendingName string
-	// pendingURL 是新增 registry 时已输入的 Git 仓库地址。
+	// pendingURL 是 registry 表单中当前待提交的 Git 仓库地址。
 	pendingURL string
-	// pendingBranches 是新增 registry 时从远端读取到的分支列表。
+	// pendingBranch 是 registry 表单中当前待提交的分支。
+	pendingBranch string
+	// pendingBranches 是 registry 表单从远端读取到的分支列表。
 	pendingBranches []string
-	// pendingDefaultBranch 是新增 registry 时远端 HEAD 指向的默认分支。
+	// pendingDefaultBranch 是 registry 表单中远端 HEAD 指向的默认分支。
 	pendingDefaultBranch string
-	// branchQuery 是新增 registry 时用于过滤远端分支的搜索文本。
+	// branchQuery 是 registry 表单中用于过滤远端分支的搜索文本。
 	branchQuery string
-	// selectedBranch 是新增 registry 分支选择列表的当前光标位置。
+	// selectedBranch 是 registry 表单分支选择列表的当前光标位置。
 	selectedBranch int
-	// branchLoading 表示新增 registry 弹框正在读取远端分支。
+	// branchLoading 表示 registry 表单正在读取远端分支。
 	branchLoading bool
-	// branchErr 是新增 registry 弹框最近一次读取分支的错误。
+	// branchErr 是 registry 表单最近一次读取分支的错误。
 	branchErr error
+	// editingRepository 是当前正在编辑的原 registry 配置。
+	editingRepository config.Repository
+	// editingRepositoryActive 表示 registry 表单正在编辑已有条目。
+	editingRepositoryActive bool
 	// pendingDownload 是覆盖确认中的下载请求。
 	pendingDownload *downloadRequest
 	// pendingConfirm 是当前确认框状态。
@@ -117,6 +123,10 @@ type model struct {
 	showHelp bool
 	// pendingWindowCommand 表示已按下 ctrl-w，等待 h/l 选择窗口。
 	pendingWindowCommand bool
+	// registrySelectionFrame 是 registry 选中变化提示动画帧索引。
+	registrySelectionFrame int
+	// registrySelectionID 是当前 registry 选中变化提示编号。
+	registrySelectionID uint64
 	// operationKind 表示当前正在运行的长耗时操作。
 	operationKind operationKind
 	// operationLabel 是当前长耗时操作的展示文本。
@@ -242,6 +252,17 @@ type repositoryAddedMsg struct {
 	err error
 }
 
+type repositoryEditedMsg struct {
+	// oldRepository 是编辑前的 registry 配置。
+	oldRepository config.Repository
+	// repository 是编辑后的 registry 配置。
+	repository config.Repository
+	// repositories 是编辑后重新加载的 registry 列表。
+	repositories []config.Repository
+	// err 是编辑过程中产生的错误。
+	err error
+}
+
 type branchesLoadedMsg struct {
 	// url 是本次查询分支的 Git 仓库地址。
 	url string
@@ -267,6 +288,11 @@ type downloadResultMsg struct {
 type operationTickMsg struct {
 	// operationID 是本次进度动画所属的操作编号。
 	operationID uint64
+}
+
+type registrySelectionTickMsg struct {
+	// selectionID 是本次 registry 选中提示动画编号。
+	selectionID uint64
 }
 
 type operationProgressMsg struct {
@@ -333,12 +359,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleRepositoryRemoved(msg)
 	case repositoryAddedMsg:
 		return m.handleRepositoryAdded(msg)
+	case repositoryEditedMsg:
+		return m.handleRepositoryEdited(msg)
 	case branchesLoadedMsg:
 		return m.handleBranchesLoaded(msg)
 	case downloadResultMsg:
 		return m.handleDownloadResult(msg)
 	case operationTickMsg:
 		return m.handleOperationTick(msg)
+	case registrySelectionTickMsg:
+		return m.handleRegistrySelectionTick(msg)
 	case operationProgressMsg:
 		return m.handleOperationProgress(msg)
 	case operationChannelClosedMsg:
@@ -386,6 +416,8 @@ func (m model) handleEntriesLoaded(msg entriesLoadedMsg) (model, tea.Cmd) {
 	m.resetTreeRoot(msg.path, msg.entries)
 	m.showingSearch = false
 	m.searchResults = nil
+	m.registrySelectionID = 0
+	m.registrySelectionFrame = 0
 	m.selectedEntry = indexForPath(m.visibleEntries(), msg.selectPath)
 	m.focus = focusTree
 	m.status = fmt.Sprintf("%s: %s", msg.repository.Name, displayPath(msg.path))
@@ -459,6 +491,8 @@ func (m model) handleRepositoryUpdated(msg repositoryUpdatedMsg) (model, tea.Cmd
 	m.resetTreeRoot(msg.path, msg.entries)
 	m.searchResults = nil
 	m.showingSearch = false
+	m.registrySelectionID = 0
+	m.registrySelectionFrame = 0
 	m.selectedEntry = clampCursor(0, len(m.visibleEntries()))
 	m.status = fmt.Sprintf("%s 已更新", msg.repository.Name)
 	return m, nil
@@ -503,7 +537,36 @@ func (m model) handleRepositoryAdded(msg repositoryAddedMsg) (model, tea.Cmd) {
 	return m, nil
 }
 
-// handleBranchesLoaded 将远端分支读取结果写入新增弹框状态。
+// handleRepositoryEdited 将 registry 编辑结果写入左栏状态。
+func (m model) handleRepositoryEdited(msg repositoryEditedMsg) (model, tea.Cmd) {
+	if msg.err != nil {
+		m.err = msg.err
+		m.status = "编辑 registry 失败"
+		return m, nil
+	}
+	m.err = nil
+	m.clearAddState()
+	m.repositories = msg.repositories
+	m.selectedRepo = indexForRepositoryName(m.repositories, msg.repository.Name)
+	if m.repoOpened && sameRepository(m.openedRepo, msg.oldRepository) {
+		if sameRepositorySource(msg.oldRepository, msg.repository) {
+			m.openedRepo = msg.repository
+		} else {
+			m.repoOpened = false
+			m.openedRepo = config.Repository{}
+			m.currentPath = ""
+			m.entries = nil
+			m.treeChildren = nil
+			m.expandedPaths = nil
+			m.searchResults = nil
+			m.showingSearch = false
+		}
+	}
+	m.status = fmt.Sprintf("%s 已编辑", msg.repository.Name)
+	return m, nil
+}
+
+// handleBranchesLoaded 将远端分支读取结果写入 registry 表单状态。
 func (m model) handleBranchesLoaded(msg branchesLoadedMsg) (model, tea.Cmd) {
 	if msg.url != m.pendingURL {
 		return m, nil
@@ -515,6 +578,9 @@ func (m model) handleBranchesLoaded(msg branchesLoadedMsg) (model, tea.Cmd) {
 		m.pendingDefaultBranch = ""
 		m.selectedBranch = 0
 		m.status = "获取分支失败，Enter 使用默认分支添加"
+		if m.editingRepositoryActive && strings.TrimSpace(m.pendingBranch) != "" {
+			m.status = "获取分支失败，Enter 保留当前分支"
+		}
 		return m, nil
 	}
 	m.err = nil
@@ -555,6 +621,15 @@ func (m model) handleOperationTick(msg operationTickMsg) (model, tea.Cmd) {
 	}
 	m.operationFrame++
 	return m, operationTickCommand(msg.operationID)
+}
+
+// handleRegistrySelectionTick 推进 registry 选中变化提示动画。
+func (m model) handleRegistrySelectionTick(msg registrySelectionTickMsg) (model, tea.Cmd) {
+	if msg.selectionID == 0 || msg.selectionID != m.registrySelectionID || !m.showRegistrySelectionPreview() {
+		return m, nil
+	}
+	m.registrySelectionFrame++
+	return m, registrySelectionTickCommand(msg.selectionID)
 }
 
 // handleOperationProgress 更新长耗时操作的进度文本。
