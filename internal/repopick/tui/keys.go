@@ -31,6 +31,10 @@ func (m model) handleKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		return m, nil
 	case "esc":
 		return m.closeTransientState()
+	case "tab":
+		return m.focusNextPane()
+	case "shift+tab":
+		return m.focusPreviousPane()
 	case "ctrl+w":
 		m.pendingWindowCommand = true
 		m.status = "ctrl-w: h/l 切换窗口"
@@ -66,14 +70,34 @@ func (m model) handleWindowCommandKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	}
 }
 
+// focusNextPane 将焦点切到下一个主栏目。
+func (m model) focusNextPane() (model, tea.Cmd) {
+	if m.focus == focusRegistry {
+		if !m.repoOpened {
+			return m.openSelectedRepository()
+		}
+		m.focus = focusTree
+		m.status = "已切到 repository tree"
+		return m, nil
+	}
+	m.focus = focusRegistry
+	m.status = "已切到 registry"
+	return m, nil
+}
+
+// focusPreviousPane 将焦点切到上一个主栏目。
+func (m model) focusPreviousPane() (model, tea.Cmd) {
+	return m.focusNextPane()
+}
+
 // handleRegistryKey 处理 registry 焦点下的快捷键。
 func (m model) handleRegistryKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	switch msg.String() {
-	case "j":
+	case "j", "down":
 		return m.moveRegistrySelection(1)
-	case "k":
+	case "k", "up":
 		return m.moveRegistrySelection(-1)
-	case "l":
+	case "l", "right", "enter":
 		return m.openSelectedRepository()
 	case "a":
 		return m.startAddName()
@@ -116,15 +140,15 @@ func (m model) startRegistrySelectionPreview() (model, tea.Cmd) {
 // handleTreeKey 处理目录树焦点下的快捷键。
 func (m model) handleTreeKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	switch msg.String() {
-	case "h":
+	case "h", "left":
 		return m.openParentDirectory()
-	case "j":
+	case "j", "down":
 		m.selectedEntry = clampCursor(m.selectedEntry+1, len(m.visibleEntries()))
 		return m, nil
-	case "k":
+	case "k", "up":
 		m.selectedEntry = clampCursor(m.selectedEntry-1, len(m.visibleEntries()))
 		return m, nil
-	case "l":
+	case "l", "right", "enter":
 		return m.toggleSelectedTreeEntry()
 	case "o":
 		return m.openSelectedEntry()

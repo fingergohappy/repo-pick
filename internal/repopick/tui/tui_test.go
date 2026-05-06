@@ -111,15 +111,64 @@ func TestStatusLineUsesFocusedPaneHelp(t *testing.T) {
 	m.width = 200
 
 	treeStatus := m.statusLine()
-	if !strings.Contains(treeStatus, "l expand/collapse") || !strings.Contains(treeStatus, "o enter root") || strings.Contains(treeStatus, "r reload list") {
+	if !strings.Contains(treeStatus, "[l]expand") || !strings.Contains(treeStatus, "[/]search") || strings.Contains(treeStatus, "reload") {
 		t.Fatalf("tree statusLine() = %q, want tree help", treeStatus)
 	}
 
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyCtrlW})
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
 	registryStatus := m.statusLine()
-	if !strings.Contains(registryStatus, "r reload list") || !strings.Contains(registryStatus, "u update repo cache") || strings.Contains(registryStatus, "l expand") {
+	if !strings.Contains(registryStatus, "[l]open") || !strings.Contains(registryStatus, "[Tab]focus") || strings.Contains(registryStatus, "expand") {
 		t.Fatalf("registry statusLine() = %q, want registry help", registryStatus)
+	}
+}
+
+func TestTabSwitchesFocusAndArrowKeysMoveSelection(t *testing.T) {
+	service := testService(t, createWorktree(t), config.Config{})
+	m := openModelWithWorktree(t, service)
+	m.repositories = []config.Repository{
+		{Name: "official", URL: "repo"},
+		{Name: "personal", URL: "repo2"},
+	}
+
+	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	if m.focus != focusRegistry {
+		t.Fatalf("focus = %v, want registry after tab from tree", m.focus)
+	}
+
+	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	if m.selectedRepo != 1 {
+		t.Fatalf("selectedRepo = %d, want 1 after down", m.selectedRepo)
+	}
+
+	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyUp})
+	if m.selectedRepo != 0 {
+		t.Fatalf("selectedRepo = %d, want 0 after up", m.selectedRepo)
+	}
+}
+
+func TestHelpViewUsesDesignedOverlay(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.showHelp = true
+
+	view := plainText(m.View())
+
+	for _, want := range []string{"快捷键帮助", "通用", "Registry", "Repository Tree", "Tab", "Enter 或 l"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want %q", view, want)
+		}
+	}
+}
+
+func TestNarrowViewRequiresMinimumUsableTerminal(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.width = minTerminalWidth - 1
+	m.height = minTerminalHeight
+
+	view := plainText(m.View())
+
+	if !strings.Contains(view, "terminal too small") || !strings.Contains(view, "80x24") {
+		t.Fatalf("View() = %q, want terminal size gate", view)
 	}
 }
 

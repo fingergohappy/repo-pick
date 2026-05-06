@@ -10,15 +10,22 @@ import (
 )
 
 const (
-	paneGapAllowance = 3
-	minTerminalWidth = 64
+	paneGapAllowance  = 3
+	minTerminalWidth  = 80
+	minTerminalHeight = 24
 )
 
 // selectedLineStyle 是列表选中项的高亮样式。
 var selectedLineStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("255")).
-	Background(lipgloss.Color("238")).
+	Reverse(true).
 	Bold(true)
+
+// paneTitleFocusedStyle 是聚焦栏目标题样式。
+var paneTitleFocusedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
+
+// paneTitleMutedStyle 是未聚焦栏目标题样式。
+var paneTitleMutedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("246")).Bold(true)
 
 // treeMetaStyle 是右侧目录上下文信息的样式。
 var treeMetaStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("246"))
@@ -90,18 +97,24 @@ var statusTextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 // statusHelpStyle 是底部快捷键提示的弱化样式。
 var statusHelpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 
+// helpSectionStyle 是帮助视图分组标题样式。
+var helpSectionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
+
+// helpKeyStyle 是帮助视图按键样式。
+var helpKeyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Reverse(true).Bold(true).Padding(0, 1)
+
 // View 渲染双栏主界面和底部状态。
 func (m model) View() string {
 	if m.showHelp {
 		return m.helpView()
 	}
-	if m.width > 0 && m.width < minTerminalWidth {
+	if m.terminalTooSmall() {
 		return m.narrowView()
 	}
 
 	leftWidth, rightWidth := paneWidths(m.width)
-	left := m.paneView("Registry", m.registryLines(), leftWidth, m.focus == focusRegistry)
-	right := m.paneView("Repository Tree", m.treeLines(), rightWidth, m.focus == focusTree)
+	left := m.paneView(m.registryPaneTitle(), m.registryLines(), leftWidth, m.focus == focusRegistry)
+	right := m.paneView(m.treePaneTitle(), m.treeLines(), rightWidth, m.focus == focusTree)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	if m.isAddMode() {
 		bodyHeight := max(8, m.height-3)
@@ -116,10 +129,12 @@ func (m model) paneView(title string, lines []string, width int, focused bool) s
 	style := lipgloss.NewStyle().Width(width).Height(m.paneHeight()).Padding(0, 1).Border(lipgloss.NormalBorder())
 	if focused {
 		style = style.BorderForeground(lipgloss.Color("39"))
+	} else {
+		style = style.BorderForeground(lipgloss.Color("238"))
 	}
 	contentWidth := paneContentWidth(width)
 	contentRows := max(1, m.paneBodyRows())
-	allLines := append([]string{truncateVisible(title, contentWidth)}, lines...)
+	allLines := append([]string{m.paneTitleLine(title, contentWidth, focused)}, lines...)
 	if len(allLines) > contentRows {
 		allLines = allLines[:contentRows]
 	}
@@ -128,6 +143,33 @@ func (m model) paneView(title string, lines []string, width int, focused bool) s
 	}
 	content := strings.Join(allLines, "\n")
 	return style.Render(content)
+}
+
+// registryPaneTitle 返回左侧 registry 栏标题。
+func (m model) registryPaneTitle() string {
+	return fmt.Sprintf("Registry (%d)", len(m.repositories))
+}
+
+// treePaneTitle 返回右侧目录树栏标题。
+func (m model) treePaneTitle() string {
+	if m.showingSearch {
+		return fmt.Sprintf("Repository Tree - Search (%d)", len(m.searchResults))
+	}
+	if m.repoOpened {
+		return fmt.Sprintf("Repository Tree - %s", m.openedRepositoryName())
+	}
+	return "Repository Tree"
+}
+
+// paneTitleLine 渲染带焦点状态的栏目标题。
+func (m model) paneTitleLine(title string, width int, focused bool) string {
+	prefix := " "
+	style := paneTitleMutedStyle
+	if focused {
+		prefix = ">"
+		style = paneTitleFocusedStyle
+	}
+	return style.Render(truncateVisible(prefix+" "+title, width))
 }
 
 // registryLines 生成左栏 registry 文本行。
@@ -240,9 +282,9 @@ func (m model) statusLine() string {
 // focusHelpLine 返回当前焦点对应的底部快捷键提示。
 func (m model) focusHelpLine() string {
 	if m.focus == focusRegistry {
-		return "ctrl-w h/l focus | j/k move | l open repo | a add registry | e edit registry | r reload list | d delete repo+cache | u update repo cache | ? help"
+		return keyHelp("q", "quit", "Tab", "focus", "j/k", "move", "l", "open", "?", "help")
 	}
-	return "ctrl-w h/l focus | j/k move | l expand/collapse | o enter root | h parent root | i download | / search | ? help"
+	return keyHelp("q", "quit", "Tab", "focus", "j/k", "move", "l", "expand", "/", "search", "?", "help")
 }
 
 // treeContextLines 生成右侧内容列表上方的仓库上下文区域。
@@ -376,7 +418,7 @@ func (m model) treeProgressBarView(width int) string {
 	percent := 0.0
 	options := []progress.Option{
 		progress.WithWidth(barWidth),
-		progress.WithSolidFill("#00A6A6"),
+		progress.WithSolidFill("6"),
 		progress.WithFillCharacters('█', '░'),
 		progress.WithoutPercentage(),
 	}
@@ -619,13 +661,44 @@ func emptyPlaceholder(value string, placeholder string) string {
 
 // helpView 渲染快捷键帮助。
 func (m model) helpView() string {
-	return strings.Join([]string{
-		"ctrl-w h/l 切换 registry/tree   j/k 移动   q 退出",
-		"registry: l 打开仓库   a 添加 registry/选分支   e 编辑 registry   r 重载列表   d 删除仓库+cache   u 更新仓库 cache",
-		"tree: l 展开/收起目录   o 进入目录作为 root   h 返回上级 root",
-		"tree: i 下载到启动目录   I 输入目标目录",
-		"/ 搜索当前仓库路径   Esc 关闭搜索/错误/确认   ? 关闭帮助",
-	}, "\n")
+	width := max(36, min(84, m.width-4))
+	innerWidth := max(28, width-6)
+	lines := []string{
+		centerLine(modalTitleStyle.Render("快捷键帮助"), innerWidth),
+		modalDescStyle.Render("当前界面支持键盘优先操作；底栏只展示最常用入口。"),
+		modalDividerLine(innerWidth),
+		helpSectionStyle.Render("通用"),
+		helpBindingLine("Tab", "切换 registry/tree 焦点"),
+		helpBindingLine("j/k 或 ↑/↓", "移动光标"),
+		helpBindingLine("Enter 或 l", "选择、打开或展开"),
+		helpBindingLine("Esc", "关闭搜索、错误或确认状态"),
+		helpBindingLine("q", "退出"),
+		"",
+		helpSectionStyle.Render("Registry"),
+		helpBindingLine("a", "添加 registry 并选择分支"),
+		helpBindingLine("e", "编辑当前 registry"),
+		helpBindingLine("r", "重新加载 registry 列表"),
+		helpBindingLine("d", "删除当前 registry 和 cache"),
+		helpBindingLine("u", "更新当前 repository cache"),
+		"",
+		helpSectionStyle.Render("Repository Tree"),
+		helpBindingLine("h 或 ←", "返回上级 root"),
+		helpBindingLine("o", "进入目录作为 root"),
+		helpBindingLine("i", "下载到启动目录"),
+		helpBindingLine("I", "输入目标目录后下载"),
+		helpBindingLine("/", "搜索当前仓库路径"),
+		helpBindingLine("?", "关闭帮助"),
+	}
+
+	if maxLines := max(1, m.height-4); len(lines) > maxLines {
+		lines = append(lines[:maxLines-1], modalDescStyle.Render("..."))
+	}
+	style := lipgloss.NewStyle().
+		Width(width).
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("39"))
+	return lipgloss.Place(m.width, max(1, m.height-1), lipgloss.Center, lipgloss.Center, style.Render(strings.Join(lines, "\n")))
 }
 
 // prompt 返回当前输入模式的提示文本。
@@ -646,8 +719,27 @@ func (m model) prompt() string {
 
 // narrowView 渲染终端过窄时的提示。
 func (m model) narrowView() string {
-	message := fmt.Sprintf("terminal too narrow: need at least %d columns", minTerminalWidth)
+	message := fmt.Sprintf("terminal too small: need at least %dx%d", minTerminalWidth, minTerminalHeight)
 	return fitPlainLine(message, m.width) + "\n" + renderStatusLine(m.status, "? help", m.width)
+}
+
+// terminalTooSmall 判断当前终端是否低于可用尺寸。
+func (m model) terminalTooSmall() bool {
+	return (m.width > 0 && m.width < minTerminalWidth) || (m.height > 0 && m.height < minTerminalHeight)
+}
+
+// keyHelp 生成底栏快捷键提示文本。
+func keyHelp(parts ...string) string {
+	chunks := make([]string, 0, len(parts)/2)
+	for i := 0; i+1 < len(parts); i += 2 {
+		chunks = append(chunks, fmt.Sprintf("[%s]%s", parts[i], parts[i+1]))
+	}
+	return strings.Join(chunks, " ")
+}
+
+// helpBindingLine 渲染帮助视图中的一条快捷键说明。
+func helpBindingLine(key string, desc string) string {
+	return fmt.Sprintf("  %-14s %s", helpKeyStyle.Render(key), desc)
 }
 
 // renderStatusLine 将状态和快捷键压缩到终端宽度内。
