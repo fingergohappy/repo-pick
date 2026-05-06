@@ -14,6 +14,17 @@
 - 支持下载文件或目录，并展示本地复制进度。
 - 目标同名时提示覆盖或取消。
 
+## 安装
+
+Homebrew 安装：
+
+```bash
+brew tap fingergohappy/tap
+brew install repo-pick
+```
+
+发布新版本时推送 `vX.Y.Z` tag；GitHub Actions 会编译 release 二进制，并更新 `fingergohappy/homebrew-tap` 中的 formula。
+
 ## 配置
 
 用户配置文件：

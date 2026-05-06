@@ -14,8 +14,16 @@ import (
 	"github.com/finger/repo-pick/internal/repopick/tui"
 )
 
+var version = "dev"
+
 // main 启动 repo-pick TUI 程序。
 func main() {
+	// --version 用于包管理器和自动化脚本做非交互健康检查。
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Printf("repo-pick %s\n", version)
+		return
+	}
+
 	configPath, err := userConfigPath()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
