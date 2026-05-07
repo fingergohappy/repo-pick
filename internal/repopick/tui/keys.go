@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"strings"
 
@@ -152,6 +153,8 @@ func (m model) handleTreeKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		return m.toggleSelectedTreeEntry()
 	case "o":
 		return m.openSelectedEntry()
+	case "e":
+		return m.editSelectedFile()
 	case "i":
 		return m.downloadSelectedEntry(m.sessionCWD)
 	case "I":
@@ -563,6 +566,33 @@ func (m model) openSelectedEntry() (model, tea.Cmd) {
 	return m.startEntriesRequest(m.openedRepo, entry.Path, "")
 }
 
+// editSelectedFile 使用 EDITOR 打开右侧当前选中的文件。
+func (m model) editSelectedFile() (model, tea.Cmd) {
+	entry, ok := m.selectedVisibleEntry()
+	if !m.repoOpened || !ok {
+		m.status = "没有可打开条目"
+		return m, nil
+	}
+	if entry.Type != app.EntryFile {
+		m.status = "只能用 EDITOR 打开文件"
+		return m, nil
+	}
+	editor := strings.TrimSpace(os.Getenv("EDITOR"))
+	if editor == "" {
+		m.status = "EDITOR 未设置"
+		return m, nil
+	}
+	result, err := m.svc.ResolveEntryPath(m.ctx, app.ResolveEntryPathRequest{Repository: m.openedRepo, Entry: entry})
+	if err != nil {
+		m.err = err
+		m.status = "解析文件路径失败"
+		return m, nil
+	}
+	m.err = nil
+	m.status = fmt.Sprintf("正在用 editor 打开 %s", entry.Name)
+	return m, editorProcessCommand(editor, result.Path, entry)
+}
+
 // toggleSelectedTreeEntry 展开或收起右侧树中当前选中的目录。
 func (m model) toggleSelectedTreeEntry() (model, tea.Cmd) {
 	if !m.repoOpened {
@@ -580,6 +610,10 @@ func (m model) toggleSelectedTreeEntry() (model, tea.Cmd) {
 	}
 	if entry.Type != app.EntryDir {
 		m.status = "文件不能展开"
+		return m, nil
+	}
+	if entry.Path == m.currentPath {
+		m.status = "已经在当前 root"
 		return m, nil
 	}
 
@@ -612,12 +646,21 @@ func (m model) downloadSelectedEntry(targetDir string) (model, tea.Cmd) {
 		return m, nil
 	}
 	request := downloadRequest{repository: m.openedRepo, entry: entry, targetDir: targetDir}
-	m.status = fmt.Sprintf("正在下载 %s", entry.Name)
-	baseLabel := fmt.Sprintf("downloading %s", entry.Name)
+	entryLabel := downloadEntryLabel(m.openedRepo, entry)
+	m.status = fmt.Sprintf("正在下载 %s", entryLabel)
+	baseLabel := fmt.Sprintf("downloading %s", entryLabel)
 	messages := make(chan tea.Msg, 64)
 	m.operationMessages = messages
 	operationID := m.startOperation(operationDownload, baseLabel)
 	return m, tea.Batch(operationTickCommand(operationID), m.listenOperationCommand(operationID), m.downloadEntryProgressCommand(operationID, request, false, messages, baseLabel))
+}
+
+// downloadEntryLabel 返回下载动作中展示的条目名称。
+func downloadEntryLabel(repo config.Repository, entry app.EntryResult) string {
+	if strings.TrimSpace(entry.Path) == "" {
+		return repositoryLabel(repo)
+	}
+	return strings.TrimSpace(entry.Name)
 }
 
 // startEntriesRequest 发起一次带编号的目录读取请求。

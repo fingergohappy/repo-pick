@@ -127,6 +127,10 @@ type model struct {
 	registrySelectionFrame int
 	// registrySelectionID 是当前 registry 选中变化提示编号。
 	registrySelectionID uint64
+	// selectionCursorFrame 是选中行光标动画帧索引。
+	selectionCursorFrame int
+	// selectionCursorTicking 表示选中行光标动画计时器已启动。
+	selectionCursorTicking bool
 	// operationKind 表示当前正在运行的长耗时操作。
 	operationKind operationKind
 	// operationLabel 是当前长耗时操作的展示文本。
@@ -165,6 +169,8 @@ type treeRow struct {
 	prefix string
 	// expanded 表示该目录是否已展开；文件固定为 false。
 	expanded bool
+	// root 表示该行是当前 tree root 自身。
+	root bool
 }
 
 // confirmState 保存当前确认框上下文。
@@ -285,6 +291,13 @@ type downloadResultMsg struct {
 	err error
 }
 
+type editorFinishedMsg struct {
+	// entry 是本次用 editor 打开的仓库文件。
+	entry app.EntryResult
+	// err 是 editor 退出时返回的错误。
+	err error
+}
+
 type operationTickMsg struct {
 	// operationID 是本次进度动画所属的操作编号。
 	operationID uint64
@@ -294,6 +307,8 @@ type registrySelectionTickMsg struct {
 	// selectionID 是本次 registry 选中提示动画编号。
 	selectionID uint64
 }
+
+type selectionCursorTickMsg struct{}
 
 type operationProgressMsg struct {
 	// operationID 是本次进度所属的操作编号。
@@ -365,10 +380,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleBranchesLoaded(msg)
 	case downloadResultMsg:
 		return m.handleDownloadResult(msg)
+	case editorFinishedMsg:
+		return m.handleEditorFinished(msg)
 	case operationTickMsg:
 		return m.handleOperationTick(msg)
 	case registrySelectionTickMsg:
 		return m.handleRegistrySelectionTick(msg)
+	case selectionCursorTickMsg:
+		return m.handleSelectionCursorTick()
 	case operationProgressMsg:
 		return m.handleOperationProgress(msg)
 	case operationChannelClosedMsg:
@@ -391,6 +410,10 @@ func (m model) handleRepositoriesLoaded(msg repositoriesLoadedMsg) (model, tea.C
 	m.repositories = msg.repositories
 	m.selectedRepo = clampCursor(m.selectedRepo, len(m.repositories))
 	m.status = fmt.Sprintf("已加载 %d 个 registry", len(m.repositories))
+	if !m.selectionCursorTicking {
+		m.selectionCursorTicking = true
+		return m, selectionCursorTickCommand()
+	}
 	return m, nil
 }
 
@@ -410,6 +433,7 @@ func (m model) handleEntriesLoaded(msg entriesLoadedMsg) (model, tea.Cmd) {
 		return m, nil
 	}
 	m.err = nil
+	m.repositories = replaceRepository(m.repositories, msg.repository)
 	m.openedRepo = msg.repository
 	m.repoOpened = true
 	m.currentPath = msg.path
@@ -485,6 +509,7 @@ func (m model) handleRepositoryUpdated(msg repositoryUpdatedMsg) (model, tea.Cmd
 		return m, nil
 	}
 	m.err = nil
+	m.repositories = replaceRepository(m.repositories, msg.repository)
 	m.openedRepo = msg.repository
 	m.repoOpened = true
 	m.currentPath = msg.path
@@ -602,7 +627,7 @@ func (m model) handleDownloadResult(msg downloadResultMsg) (model, tea.Cmd) {
 			m.pendingDownload = &msg.request
 			m.pendingConfirm = &confirmState{kind: confirmOverwrite}
 			m.mode = modeConfirmOverwrite
-			m.status = fmt.Sprintf("%s already exists. Overwrite? y/n", msg.request.entry.Name)
+			m.status = fmt.Sprintf("%s already exists. Overwrite? y/n", downloadEntryLabel(msg.request.repository, msg.request.entry))
 			return m, nil
 		}
 		m.err = msg.err
@@ -610,7 +635,19 @@ func (m model) handleDownloadResult(msg downloadResultMsg) (model, tea.Cmd) {
 		return m, nil
 	}
 	m.err = nil
-	m.status = fmt.Sprintf("%s 下载完成", msg.request.entry.Name)
+	m.status = fmt.Sprintf("%s 下载完成", downloadEntryLabel(msg.request.repository, msg.request.entry))
+	return m, nil
+}
+
+// handleEditorFinished 根据 editor 退出结果更新状态栏。
+func (m model) handleEditorFinished(msg editorFinishedMsg) (model, tea.Cmd) {
+	if msg.err != nil {
+		m.err = msg.err
+		m.status = "打开 editor 失败"
+		return m, nil
+	}
+	m.err = nil
+	m.status = fmt.Sprintf("%s 已关闭", msg.entry.Name)
 	return m, nil
 }
 
@@ -630,6 +667,12 @@ func (m model) handleRegistrySelectionTick(msg registrySelectionTickMsg) (model,
 	}
 	m.registrySelectionFrame++
 	return m, registrySelectionTickCommand(msg.selectionID)
+}
+
+// handleSelectionCursorTick 推进选中行光标动画。
+func (m model) handleSelectionCursorTick() (model, tea.Cmd) {
+	m.selectionCursorFrame++
+	return m, selectionCursorTickCommand()
 }
 
 // handleOperationProgress 更新长耗时操作的进度文本。

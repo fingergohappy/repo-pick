@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/finger/repo-pick/internal/repopick/cache"
 	"github.com/finger/repo-pick/internal/repopick/config"
@@ -178,6 +179,20 @@ type SearchEntriesResult struct {
 	Entries []EntryResult
 }
 
+// ResolveEntryPathRequest 表示解析仓库条目本地路径的请求。
+type ResolveEntryPathRequest struct {
+	// Repository 是条目所属仓库。
+	Repository config.Repository
+	// Entry 是要解析本地路径的文件或目录。
+	Entry EntryResult
+}
+
+// ResolveEntryPathResult 表示仓库条目在本地 cache 中的路径。
+type ResolveEntryPathResult struct {
+	// Path 是条目在本地 cache 工作区中的绝对路径。
+	Path string
+}
+
 // DownloadEntryRequest 表示下载文件或目录的结构化请求。
 type DownloadEntryRequest struct {
 	// Repository 是条目所属仓库。
@@ -268,6 +283,12 @@ func (s Service) EnsureRepository(ctx context.Context, repo config.Repository) (
 	if err != nil {
 		return RepositoryState{}, err
 	}
+	if worktree.Created {
+		repo, err = s.recordRepositoryUpdatedAt(repo)
+		if err != nil {
+			return RepositoryState{}, err
+		}
+	}
 	return RepositoryState{Repository: repo, WorktreeDir: worktree.Dir}, nil
 }
 
@@ -276,6 +297,12 @@ func (s Service) EnsureRepositoryWithProgress(ctx context.Context, repo config.R
 	worktree, err := s.Cache.EnsureWithProgress(ctx, repo, cacheProgressFunc(progress))
 	if err != nil {
 		return RepositoryState{}, err
+	}
+	if worktree.Created {
+		repo, err = s.recordRepositoryUpdatedAt(repo)
+		if err != nil {
+			return RepositoryState{}, err
+		}
 	}
 	return RepositoryState{Repository: repo, WorktreeDir: worktree.Dir}, nil
 }
@@ -286,12 +313,20 @@ func (s Service) UpdateRepository(ctx context.Context, repo config.Repository) (
 	if err != nil {
 		return RepositoryState{}, err
 	}
+	repo, err = s.recordRepositoryUpdatedAt(repo)
+	if err != nil {
+		return RepositoryState{}, err
+	}
 	return RepositoryState{Repository: repo, WorktreeDir: worktree.Dir}, nil
 }
 
 // UpdateRepositoryWithProgress 删除旧 cache 并重新 shallow clone 仓库，同时回传 clone 进度。
 func (s Service) UpdateRepositoryWithProgress(ctx context.Context, repo config.Repository, progress ProgressFunc) (RepositoryState, error) {
 	worktree, err := s.Cache.UpdateWithProgress(ctx, repo, cacheProgressFunc(progress))
+	if err != nil {
+		return RepositoryState{}, err
+	}
+	repo, err = s.recordRepositoryUpdatedAt(repo)
 	if err != nil {
 		return RepositoryState{}, err
 	}
@@ -322,6 +357,19 @@ func (s Service) SearchEntries(ctx context.Context, req SearchEntriesRequest) (S
 		return SearchEntriesResult{}, err
 	}
 	return SearchEntriesResult{Repository: req.Repository, Query: strings.TrimSpace(req.Query), Entries: entries}, nil
+}
+
+// ResolveEntryPath 返回仓库条目在本地 cache 工作区中的安全路径。
+func (s Service) ResolveEntryPath(ctx context.Context, req ResolveEntryPathRequest) (ResolveEntryPathResult, error) {
+	worktree, err := s.Cache.Ensure(ctx, req.Repository)
+	if err != nil {
+		return ResolveEntryPathResult{}, err
+	}
+	entryPath, err := sourcePathForEntry(worktree.Dir, req.Entry)
+	if err != nil {
+		return ResolveEntryPathResult{}, err
+	}
+	return ResolveEntryPathResult{Path: entryPath}, nil
 }
 
 // DownloadEntry 将指定文件或目录下载到目标目录下。
@@ -374,6 +422,15 @@ func (s Service) findRepository(name string) (config.Repository, error) {
 		}
 	}
 	return config.Repository{}, fmt.Errorf("%w: %s", ErrRepositoryNotFound, name)
+}
+
+// recordRepositoryUpdatedAt 将仓库 cache 成功更新时间写回 registry 配置。
+func (s Service) recordRepositoryUpdatedAt(repo config.Repository) (config.Repository, error) {
+	repo.LastUpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	if s.Registry == nil {
+		return repo, nil
+	}
+	return repo, s.Registry.Update(repo.Name, repo)
 }
 
 // sourcePathForEntry 将仓库内 Entry 路径转换为安全的本地源路径。

@@ -23,6 +23,8 @@ type Repository struct {
 	URL string `yaml:"url"`
 	// Branch 是可选 Git 分支；为空时使用远端默认分支。
 	Branch string `yaml:"branch,omitempty"`
+	// LastUpdatedAt 是本地 cache 最近一次成功生成或刷新的时间。
+	LastUpdatedAt string `yaml:"last_updated_at,omitempty"`
 }
 
 // Store 负责读取和写入完整用户配置。

@@ -2,74 +2,49 @@
 
 English | [简体中文](README.md)
 
-`repo-pick` is a TUI-only tool for downloading files and directories from remote Git repositories.
+`repo-pick` is a TUI-only tool for downloading files and directories from remote Git repositories. It shallow-clones repositories into a local cache, lets you browse the work tree in the terminal, and downloads the selected file, directory, or entire repository into a local directory.
 
-After startup, it opens a terminal interface: the left pane manages repository bookmarks, and the right pane browses the repository tree. Repositories are shallow-cloned into a local cache. Selected files or directories can then be downloaded to the startup directory or a custom target directory.
+## Demo
 
-## Features
+<!-- TODO: Add demo video or GIF -->
 
-- Manage remote Git repository bookmarks from a terminal interface.
-- Save different branches for the same repository URL and switch between them.
-- Browse repository contents from a local shallow-clone cache to avoid repeated downloads.
-- Browse directory trees, search paths, and manually refresh repository contents.
-- Show Git clone progress when opening or refreshing a repository.
-- Download a single file or an entire directory with local copy progress.
-- Prompt to overwrite or cancel when the target path already exists.
+## Quick Start
 
-## Installation
-
-Install with Homebrew:
+Install:
 
 ```bash
 brew tap fingergohappy/tap
 brew install repo-pick
 ```
 
-To publish a new version, push a `vX.Y.Z` tag. GitHub Actions will build release binaries and update the formula in `fingergohappy/homebrew-tap`.
+Start:
 
-## Configuration
+```bash
+repo-pick
+```
 
-User configuration file:
+First run:
 
 ```text
-~/.config/repo-pick/config.yaml
+a       Add registry
+l       Open current registry
+j/k     Move in the work tree
+i       Download current item to the startup directory
 ```
 
-Example:
+## Core Workflow
 
-```yaml
-repositories:
-  - name: official
-    url: https://github.com/org/tools
-  - name: personal
-    url: git@github.com:finger/my-tools.git
-    branch: main
-```
+1. Press `a` in the left `Registry` pane to add a remote Git repository.
+2. Press `l` to open the current registry. The first open shallow-clones it into the local cache; later opens reuse the cache.
+3. Browse directories, search paths, or expand directories in the right `Repository Tree` pane.
+4. Select a file, directory, or the root `/`, then press `i` to download it to the startup directory, or `I` to enter a target directory.
+5. Select a file and press `e` to open the cached file with `EDITOR`.
 
-Fields:
+In Repository Tree, `/` is the current root. Pressing `i` or `I` on the repository root `/` downloads the entire repository, using the registry name as the target directory name.
 
-- `repositories[].name`: local registry name; must be unique.
-- `repositories[].url`: Git repository URL; duplicates are allowed.
-- `repositories[].branch`: optional Git branch; branches cannot be duplicated under the same URL. If empty or omitted, the remote default branch is used.
+Pressing `e` runs the command in the `EDITOR` environment variable, for example `EDITOR=vim` or `EDITOR="code -w"`. If `EDITOR` is not set, repo-pick only shows a status message and does not start an external program.
 
-## Cache
-
-Repository cache path:
-
-```text
-~/.cache/repo-pick/repos/<url-or-url+branch-hash>/
-```
-
-`Ensure` behavior:
-
-- Cache exists: read the local working tree directly without network access.
-- Cache does not exist: run `git clone --depth 1 --single-branch`; if `branch` is configured, also pass `--branch <branch>`.
-
-`Update` behavior:
-
-- Delete the old cache.
-- Run a fresh shallow clone.
-- If the new download fails, the old cache is not restored; the repository cannot be browsed in that run.
+repo-pick asks for confirmation before risky actions such as deleting a registry or overwriting an existing target. The bottom status bar shows context-aware keybindings based on the focused pane.
 
 ## Keybindings
 
@@ -96,6 +71,8 @@ d       Delete registry and its cache
 u       Update current repository cache; delete old cache and download repository contents again
 ```
 
+Deleting a registry opens a confirmation dialog. Press `y` to confirm, or `n`/`Esc` to cancel.
+
 Repository Tree:
 
 ```text
@@ -103,11 +80,66 @@ h       Return to parent root
 j/k     Move
 l       Expand or collapse selected directory
 o       Enter directory and make it the new root; files are located in their parent directory
+e       Open current file with EDITOR
 i       Download current item to the startup directory
 I       Enter a target directory and download current item there
 ```
 
-## Project Structure
+## Configuration
+
+User configuration file:
+
+```text
+~/.config/repo-pick/config.yaml
+```
+
+Example:
+
+```yaml
+repositories:
+  - name: official
+    url: https://github.com/org/tools
+  - name: personal
+    url: git@github.com:finger/my-tools.git
+    branch: main
+```
+
+Fields:
+
+- `repositories[].name`: local registry name; must be unique.
+- `repositories[].url`: Git repository URL; duplicates are allowed.
+- `repositories[].branch`: optional Git branch; branches cannot be duplicated under the same URL. If empty or omitted, the remote default branch is used.
+- `repositories[].last_updated_at`: last time the local cache was successfully created or refreshed; maintained automatically by the program.
+
+## Cache Behavior
+
+Repository cache path:
+
+```text
+~/.cache/repo-pick/repos/<url-or-url+branch-hash>/
+```
+
+`Ensure` behavior:
+
+- Cache exists: read the local working tree directly without network access.
+- Cache does not exist: run `git clone --depth 1 --single-branch`; if `branch` is configured, also pass `--branch <branch>`.
+- On first successful cache creation, update `last_updated_at` in the configuration.
+
+`Update` behavior:
+
+- Delete the old cache.
+- Run a fresh shallow clone.
+- On success, update `last_updated_at` in the configuration.
+- If the new download fails, the old cache is not restored; the repository cannot be browsed in that run.
+
+## Development
+
+```bash
+go mod download
+go test ./...
+```
+
+Main directories:
 
 ```text
 cmd/repo-pick/             # Program entrypoint; starts the TUI directly
@@ -118,14 +150,4 @@ internal/repopick/install/ # File and directory copy
 internal/repopick/registry/# Repository bookmark management
 internal/repopick/tree/    # Cache working tree reading and search
 internal/repopick/tui/     # Bubble Tea terminal interface
-configs/                   # Configuration examples
-docs/                      # Design and task documents
-test/testdata/             # Test data
-```
-
-## Development
-
-```bash
-go mod download
-go test ./...
 ```

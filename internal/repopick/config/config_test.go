@@ -38,6 +38,7 @@ repositories:
   - name: official
     url: https://github.com/org/tools
     branch: dev
+    last_updated_at: "2026-05-07T12:34:56Z"
 `)
 
 	cfg, err := Parse(data)
@@ -53,6 +54,9 @@ repositories:
 	}
 	if got := cfg.Repositories[0].Branch; got != "dev" {
 		t.Errorf("Repositories[0].Branch = %q, want %q", got, "dev")
+	}
+	if got := cfg.Repositories[0].LastUpdatedAt; got != "2026-05-07T12:34:56Z" {
+		t.Errorf("Repositories[0].LastUpdatedAt = %q, want timestamp", got)
 	}
 }
 

@@ -25,6 +25,8 @@ import (
 type Worktree struct {
 	// Dir 是本地 cache 工作区的完整路径。
 	Dir string
+	// Created 表示本次调用新生成了本地 cache 工作区。
+	Created bool
 }
 
 // RemoteBranches 表示远端仓库可选择的分支信息。
@@ -83,7 +85,7 @@ func (s Service) EnsureWithProgress(ctx context.Context, repo config.Repository,
 	if err := s.clone(ctx, repo.URL, repo.Branch, dir, progress); err != nil {
 		return Worktree{}, err
 	}
-	return Worktree{Dir: dir}, nil
+	return Worktree{Dir: dir, Created: true}, nil
 }
 
 // Update 删除旧 cache 并重新 shallow clone 指定仓库。
@@ -108,7 +110,7 @@ func (s Service) UpdateWithProgress(ctx context.Context, repo config.Repository,
 	if err := s.clone(ctx, repo.URL, repo.Branch, dir, progress); err != nil {
 		return Worktree{}, err
 	}
-	return Worktree{Dir: dir}, nil
+	return Worktree{Dir: dir, Created: true}, nil
 }
 
 // Delete 删除指定仓库 URL 和分支对应的 cache 目录。

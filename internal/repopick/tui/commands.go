@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os/exec"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -10,6 +11,7 @@ import (
 
 const operationTickInterval = 120 * time.Millisecond
 const registrySelectionTickInterval = 90 * time.Millisecond
+const selectionCursorTickInterval = 180 * time.Millisecond
 
 // listRepositoriesCommand 创建读取 registry 列表的异步命令。
 func (m model) listRepositoriesCommand() tea.Cmd {
@@ -23,15 +25,15 @@ func (m model) listRepositoriesCommand() tea.Cmd {
 func (m model) openRepositoryProgressCommand(operationID uint64, repo config.Repository, messages chan tea.Msg, baseLabel string) tea.Cmd {
 	return func() tea.Msg {
 		defer close(messages)
-		_, err := m.svc.EnsureRepositoryWithProgress(m.ctx, repo, func(event app.ProgressEvent) {
+		state, err := m.svc.EnsureRepositoryWithProgress(m.ctx, repo, func(event app.ProgressEvent) {
 			sendOperationProgress(messages, operationProgressMsg{operationID: operationID, kind: operationOpen, baseLabel: baseLabel, event: event})
 		})
 		if err != nil {
 			messages <- entriesLoadedMsg{requestID: operationID, operationKind: operationOpen, repository: repo, err: err}
 			return nil
 		}
-		result, err := m.svc.ListEntries(m.ctx, app.ListEntriesRequest{Repository: repo})
-		messages <- entriesLoadedMsg{requestID: operationID, operationKind: operationOpen, repository: repo, path: result.DirPath, entries: result.Entries, err: err}
+		result, err := m.svc.ListEntries(m.ctx, app.ListEntriesRequest{Repository: state.Repository})
+		messages <- entriesLoadedMsg{requestID: operationID, operationKind: operationOpen, repository: state.Repository, path: result.DirPath, entries: result.Entries, err: err}
 		return nil
 	}
 }
@@ -76,14 +78,15 @@ func (m model) searchEntriesCommand(requestID uint64, repo config.Repository, qu
 func (m model) updateRepositoryProgressCommand(operationID uint64, repo config.Repository, dirPath string, messages chan tea.Msg, baseLabel string) tea.Cmd {
 	return func() tea.Msg {
 		defer close(messages)
-		if _, err := m.svc.UpdateRepositoryWithProgress(m.ctx, repo, func(event app.ProgressEvent) {
+		state, err := m.svc.UpdateRepositoryWithProgress(m.ctx, repo, func(event app.ProgressEvent) {
 			sendOperationProgress(messages, operationProgressMsg{operationID: operationID, kind: operationUpdate, baseLabel: baseLabel, event: event})
-		}); err != nil {
+		})
+		if err != nil {
 			messages <- repositoryUpdatedMsg{operationID: operationID, repository: repo, err: err}
 			return nil
 		}
-		result, err := m.svc.ListEntries(m.ctx, app.ListEntriesRequest{Repository: repo, DirPath: dirPath})
-		messages <- repositoryUpdatedMsg{operationID: operationID, repository: repo, path: result.DirPath, entries: result.Entries, err: err}
+		result, err := m.svc.ListEntries(m.ctx, app.ListEntriesRequest{Repository: state.Repository, DirPath: dirPath})
+		messages <- repositoryUpdatedMsg{operationID: operationID, repository: state.Repository, path: result.DirPath, entries: result.Entries, err: err}
 		return nil
 	}
 }
@@ -166,6 +169,21 @@ func operationTickCommand(operationID uint64) tea.Cmd {
 func registrySelectionTickCommand(selectionID uint64) tea.Cmd {
 	return tea.Tick(registrySelectionTickInterval, func(time.Time) tea.Msg {
 		return registrySelectionTickMsg{selectionID: selectionID}
+	})
+}
+
+// selectionCursorTickCommand 创建选中行光标动画的下一帧命令。
+func selectionCursorTickCommand() tea.Cmd {
+	return tea.Tick(selectionCursorTickInterval, func(time.Time) tea.Msg {
+		return selectionCursorTickMsg{}
+	})
+}
+
+// editorProcessCommand 创建用环境变量 EDITOR 打开本地文件的命令。
+func editorProcessCommand(editor string, filePath string, entry app.EntryResult) tea.Cmd {
+	command := exec.Command("sh", "-c", editor+" \"$1\"", "repo-pick-editor", filePath)
+	return tea.ExecProcess(command, func(err error) tea.Msg {
+		return editorFinishedMsg{entry: entry, err: err}
 	})
 }
 

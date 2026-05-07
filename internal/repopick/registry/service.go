@@ -149,5 +149,6 @@ func normalizeRepository(repo config.Repository) config.Repository {
 	repo.Name = strings.TrimSpace(repo.Name)
 	repo.URL = strings.TrimSpace(repo.URL)
 	repo.Branch = strings.TrimSpace(repo.Branch)
+	repo.LastUpdatedAt = strings.TrimSpace(repo.LastUpdatedAt)
 	return repo
 }

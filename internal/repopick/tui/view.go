@@ -3,10 +3,12 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/finger/repo-pick/internal/repopick/app"
+	"github.com/finger/repo-pick/internal/repopick/config"
 )
 
 const (
@@ -18,7 +20,6 @@ const (
 // selectedLineStyle 是列表选中项的高亮样式。
 var selectedLineStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("255")).
-	Reverse(true).
 	Bold(true)
 
 // paneTitleFocusedStyle 是聚焦栏目标题样式。
@@ -53,6 +54,9 @@ var dirEntryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("75")).Bold(tr
 
 // fileEntryStyle 是文件条目的样式。
 var fileEntryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
+
+// treeRootEntryStyle 是右侧 tree root 条目的样式。
+var treeRootEntryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("111")).Bold(true)
 
 // emptyEntryStyle 是空列表提示的样式。
 var emptyEntryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Italic(true)
@@ -120,6 +124,10 @@ func (m model) View() string {
 		bodyHeight := max(8, m.height-3)
 		body = lipgloss.Place(m.width, bodyHeight, lipgloss.Center, lipgloss.Center, m.addRepositoryModalView())
 	}
+	if m.mode == modeConfirmDelete {
+		bodyHeight := max(8, m.height-3)
+		body = lipgloss.Place(m.width, bodyHeight, lipgloss.Center, lipgloss.Center, m.deleteRepositoryConfirmModalView())
+	}
 
 	return body + "\n" + m.statusLine()
 }
@@ -134,7 +142,7 @@ func (m model) paneView(title string, lines []string, width int, focused bool) s
 	}
 	contentWidth := paneContentWidth(width)
 	contentRows := max(1, m.paneBodyRows())
-	allLines := append([]string{m.paneTitleLine(title, contentWidth, focused)}, lines...)
+	allLines := append([]string{m.paneTitleLine(title, contentWidth, focused), m.paneTitleDividerLine(contentWidth)}, lines...)
 	if len(allLines) > contentRows {
 		allLines = allLines[:contentRows]
 	}
@@ -163,13 +171,17 @@ func (m model) treePaneTitle() string {
 
 // paneTitleLine 渲染带焦点状态的栏目标题。
 func (m model) paneTitleLine(title string, width int, focused bool) string {
-	prefix := " "
 	style := paneTitleMutedStyle
 	if focused {
-		prefix = ">"
 		style = paneTitleFocusedStyle
 	}
-	return style.Render(truncateVisible(prefix+" "+title, width))
+	title = truncateVisible(title, width)
+	return style.Render(centerLine(title, width))
+}
+
+// paneTitleDividerLine 渲染栏目标题下方的分隔线。
+func (m model) paneTitleDividerLine(width int) string {
+	return treeSeparatorStyle.Render(strings.Repeat("─", max(12, width)))
 }
 
 // registryLines 生成左栏 registry 文本行。
@@ -186,17 +198,60 @@ func (m model) registryLines() []string {
 		repository := m.repositories[i]
 		cursor := " "
 		if i == m.selectedRepo {
-			cursor = ">"
+			cursor = m.selectionCursor()
 		}
-		name := repository.Name
-		if strings.TrimSpace(repository.Branch) != "" {
-			name = fmt.Sprintf("%s [%s]", name, repository.Branch)
-		}
-		line := fmt.Sprintf("%s %s", cursor, name)
-		line = truncateVisible(line, contentWidth)
+		line := registryLine(cursor, repository, contentWidth)
 		lines = append(lines, selectedLine(line, i == m.selectedRepo))
 	}
 	return lines
+}
+
+// registryLine 生成单条 registry 行，并在右侧展示 cache 上次更新时间。
+func registryLine(cursor string, repository config.Repository, width int) string {
+	label := repositoryLabel(repository)
+	updatedAt := shortRepositoryUpdatedAt(repository.LastUpdatedAt)
+	if width <= 0 {
+		return ""
+	}
+
+	prefix := cursor + " "
+	prefixWidth := lipgloss.Width(prefix)
+	if updatedAt == "" || width <= prefixWidth+lipgloss.Width(updatedAt)+1 {
+		return truncateVisible(prefix+label, width)
+	}
+
+	labelWidth := max(1, width-prefixWidth-lipgloss.Width(updatedAt)-1)
+	label = truncateVisible(label, labelWidth)
+	gap := max(1, width-prefixWidth-lipgloss.Width(label)-lipgloss.Width(updatedAt))
+	return truncateVisible(prefix+label+strings.Repeat(" ", gap)+updatedAt, width)
+}
+
+// shortRepositoryUpdatedAt 将 RFC3339 更新时间压缩成适合左栏展示的短文本。
+func shortRepositoryUpdatedAt(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "-"
+	}
+	updatedAt, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return "?"
+	}
+	localUpdatedAt := updatedAt.Local()
+	now := time.Now()
+	if sameCalendarDay(localUpdatedAt, now) {
+		return localUpdatedAt.Format("15:04")
+	}
+	if localUpdatedAt.Year() == now.Year() {
+		return localUpdatedAt.Format("01-02")
+	}
+	return localUpdatedAt.Format("2006")
+}
+
+// sameCalendarDay 判断两个时间是否属于同一个本地日历日。
+func sameCalendarDay(a time.Time, b time.Time) bool {
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	return ay == by && am == bm && ad == bd
 }
 
 // emptyRegistryLines 生成 registry 为空时的占位内容。
@@ -229,7 +284,10 @@ func (m model) treeLines() []string {
 	}
 
 	lines := m.treeContextLines()
-	lines = append(lines, m.treeSeparatorLine(), m.treeContentHeaderLine())
+	lines = append(lines, m.treeSeparatorLine())
+	if m.showingSearch {
+		lines = append(lines, m.treeContentHeaderLine())
+	}
 	entryLimit := max(0, lineLimit-len(lines))
 
 	if m.showingSearch {
@@ -282,9 +340,9 @@ func (m model) statusLine() string {
 // focusHelpLine 返回当前焦点对应的底部快捷键提示。
 func (m model) focusHelpLine() string {
 	if m.focus == focusRegistry {
-		return keyHelp("q", "quit", "Tab", "focus", "j/k", "move", "l", "open", "?", "help")
+		return keyHelp("j/k", "move", "l", "open", "a", "add", "e", "edit", "r", "reload", "d", "delete", "u", "update", "Tab", "tree", "?", "help")
 	}
-	return keyHelp("q", "quit", "Tab", "focus", "j/k", "move", "l", "expand", "/", "search", "?", "help")
+	return keyHelp("j/k", "move", "l", "expand", "h", "parent", "o", "root", "e", "editor", "i", "download", "I", "target", "/", "search", "Tab", "registry", "?", "help")
 }
 
 // treeContextLines 生成右侧内容列表上方的仓库上下文区域。
@@ -338,12 +396,9 @@ func (m model) treeSeparatorLine() string {
 
 // treeContentHeaderLine 渲染右侧文件内容表头。
 func (m model) treeContentHeaderLine() string {
-	if m.showingSearch {
-		_, rightWidth := paneWidths(m.width)
-		header := truncateVisible(fmt.Sprintf("  %-4s %-8s %s", "type", "size", "path"), paneContentWidth(rightWidth))
-		return treeHeaderStyle.Render(header)
-	}
-	return treeHeaderStyle.Render("  tree")
+	_, rightWidth := paneWidths(m.width)
+	header := truncateVisible(fmt.Sprintf("  %-4s %-8s %s", "type", "size", "path"), paneContentWidth(rightWidth))
+	return treeHeaderStyle.Render(header)
 }
 
 // treeLoadingLines 生成右侧仓库加载模板态。
@@ -439,9 +494,12 @@ func (m model) treeProgressPercentView() string {
 
 // treeEntryLine 渲染右侧一个文件或目录条目。
 func (m model) treeEntryLine(row treeRow, selected bool, width int) string {
+	if row.root {
+		return m.treeRootEntryLine(row, selected, width)
+	}
 	cursor := " "
 	if selected {
-		cursor = ">"
+		cursor = m.selectionCursor()
 	}
 	entry := row.entry
 	marker := "•"
@@ -467,6 +525,19 @@ func (m model) treeEntryLine(row treeRow, selected bool, width int) string {
 	return fileEntryStyle.Render(line)
 }
 
+// treeRootEntryLine 渲染右侧当前 tree root 行。
+func (m model) treeRootEntryLine(row treeRow, selected bool, width int) string {
+	cursor := " "
+	if selected {
+		cursor = m.selectionCursor()
+	}
+	line := truncateVisible(fmt.Sprintf("%s %s", cursor, displayPath(row.entry.Path)), width)
+	if selected {
+		return selectedLine(line, true)
+	}
+	return treeRootEntryStyle.Render(line)
+}
+
 // treeEntryMeta 返回文件节点的弱化补充信息。
 func treeEntryMeta(entry app.EntryResult) string {
 	if entry.Type == app.EntryDir {
@@ -479,7 +550,7 @@ func treeEntryMeta(entry app.EntryResult) string {
 func (m model) searchEntryLine(entry app.EntryResult, selected bool, width int) string {
 	cursor := " "
 	if selected {
-		cursor = ">"
+		cursor = m.selectionCursor()
 	}
 	name := entry.Path
 	if entry.Type == app.EntryDir {
@@ -546,6 +617,37 @@ func (m model) addRepositoryModalView() string {
 	return style.Render(strings.Join(lines, "\n"))
 }
 
+// deleteRepositoryConfirmModalView 渲染 registry 删除确认弹框。
+func (m model) deleteRepositoryConfirmModalView() string {
+	modalWidth := max(32, min(76, m.width-4))
+	innerWidth := max(24, modalWidth-6)
+	var repo config.Repository
+	if m.pendingConfirm != nil {
+		repo = m.pendingConfirm.repository
+	}
+	branch := strings.TrimSpace(repo.Branch)
+	if branch == "" {
+		branch = "远端默认分支"
+	}
+	lines := []string{
+		centerLine(modalTitleStyle.Render("删除 Registry"), innerWidth),
+		modalDescStyle.Render("删除后会同步移除本地 cache。"),
+		modalDividerLine(innerWidth),
+		addModalFieldLine("name", repo.Name, false),
+		addModalFieldLine("url", repo.URL, false),
+		addModalFieldLine("branch", branch, false),
+		modalDividerLine(innerWidth),
+		modalHintStyle.Render("y 确认删除   n/Esc 取消"),
+	}
+
+	style := lipgloss.NewStyle().
+		Width(modalWidth).
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("39"))
+	return style.Render(strings.Join(lines, "\n"))
+}
+
 // addModalFieldLine 渲染新增弹框中的单个字段行。
 func addModalFieldLine(label string, value string, active bool) string {
 	text := fmt.Sprintf("  %-7s %s", label, emptyPlaceholder(value, "-"))
@@ -595,7 +697,7 @@ func (m model) branchSelectLines() []string {
 	for i := start; i < end; i++ {
 		cursor := " "
 		if i == m.selectedBranch {
-			cursor = ">"
+			cursor = m.selectionCursor()
 		}
 		line := fmt.Sprintf("  %s %s", cursor, choices[i])
 		lines = append(lines, selectedLine(line, i == m.selectedBranch))
@@ -616,6 +718,12 @@ func selectedLine(line string, selected bool) string {
 		return line
 	}
 	return selectedLineStyle.Render(line)
+}
+
+// selectionCursor 返回当前选中行的动画光标。
+func (m model) selectionCursor() string {
+	frames := []string{">", "›", "»", "›"}
+	return frames[m.selectionCursorFrame%len(frames)]
 }
 
 // centerLine 按可见宽度居中渲染单行文本。
@@ -684,6 +792,7 @@ func (m model) helpView() string {
 		helpSectionStyle.Render("Repository Tree"),
 		helpBindingLine("h 或 ←", "返回上级 root"),
 		helpBindingLine("o", "进入目录作为 root"),
+		helpBindingLine("e", "用 EDITOR 打开当前文件"),
 		helpBindingLine("i", "下载到启动目录"),
 		helpBindingLine("I", "输入目标目录后下载"),
 		helpBindingLine("/", "搜索当前仓库路径"),
@@ -846,9 +955,9 @@ func (m model) paneBodyRows() int {
 	return max(1, m.paneHeight()-2)
 }
 
-// paneItemRows 返回扣除栏目标题后的可用列表行数。
+// paneItemRows 返回扣除栏目标题和分隔线后的可用列表行数。
 func (m model) paneItemRows() int {
-	return max(1, m.paneBodyRows()-1)
+	return max(1, m.paneBodyRows()-2)
 }
 
 // paneContentWidth 返回栏目边框和左右 padding 内的文本宽度。

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/finger/repo-pick/internal/repopick/app"
 	"github.com/finger/repo-pick/internal/repopick/cache"
 	"github.com/finger/repo-pick/internal/repopick/config"
@@ -50,6 +51,82 @@ func TestEmptyRegistryUsesDesignedPlaceholder(t *testing.T) {
 	}
 	if strings.Contains(lines, "a add") {
 		t.Fatalf("registryLines() = %q, should not use old empty placeholder", lines)
+	}
+}
+
+func TestPaneTitleIsCenteredWithDivider(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	width := 24
+
+	title := plainText(m.paneTitleLine("Registry (1)", width, true))
+	if strings.Contains(title, ">") {
+		t.Fatalf("paneTitleLine() = %q, should not include selection cursor", title)
+	}
+	if !strings.Contains(title, "Registry (1)") || !strings.HasPrefix(title, "      ") {
+		t.Fatalf("paneTitleLine() = %q, want centered title", title)
+	}
+
+	divider := plainText(m.paneTitleDividerLine(width))
+	if lipgloss.Width(divider) != width || !strings.Contains(divider, "─") {
+		t.Fatalf("paneTitleDividerLine() = %q, want full-width divider", divider)
+	}
+}
+
+func TestRegistryLinesShowLastUpdatedAt(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.repositories = []config.Repository{
+		{Name: "official", URL: "repo", LastUpdatedAt: "1999-01-02T03:04:05Z"},
+		{Name: "personal", URL: "repo2"},
+	}
+
+	lines := strings.Join(plainLines(m.registryLines()), "\n")
+
+	if !strings.Contains(lines, "official") || !strings.Contains(lines, "1999") {
+		t.Fatalf("registryLines() = %q, want last updated year", lines)
+	}
+	if !strings.Contains(lines, "personal") || !strings.Contains(lines, "-") {
+		t.Fatalf("registryLines() = %q, want empty updated marker", lines)
+	}
+}
+
+func TestDeleteRepositoryShowsConfirmModalBeforeRemoving(t *testing.T) {
+	store := &memoryStore{cfg: config.Config{
+		Repositories: []config.Repository{{Name: "official", URL: "https://github.com/org/tools", Branch: "main"}},
+	}}
+	cacheSvc := &fakeCache{worktree: cache.Worktree{Dir: createWorktree(t)}}
+	service := app.Service{
+		Registry:  registry.NewService(store),
+		Cache:     cacheSvc,
+		Installer: install.Installer{},
+	}
+	m := newModel(context.Background(), service, t.TempDir())
+	m.repositories = store.cfg.Repositories
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	m = next.(model)
+	if cmd != nil || m.mode != modeConfirmDelete {
+		t.Fatalf("cmd/mode = %v/%v, want confirm delete without command", cmd, m.mode)
+	}
+	view := plainText(m.View())
+	if !strings.Contains(view, "删除 Registry") || !strings.Contains(view, "official") || !strings.Contains(view, "y 确认删除") {
+		t.Fatalf("View() = %q, want delete confirm modal", view)
+	}
+	if len(store.cfg.Repositories) != 1 {
+		t.Fatalf("repositories = %#v, want unchanged before confirm", store.cfg.Repositories)
+	}
+
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = next.(model)
+	if cmd == nil || m.mode != modeNormal {
+		t.Fatalf("cmd/mode = %v/%v, want remove command and normal mode", cmd, m.mode)
+	}
+	m = updateModel(t, m, cmd())
+
+	if len(store.cfg.Repositories) != 0 {
+		t.Fatalf("repositories = %#v, want removed after confirm", store.cfg.Repositories)
+	}
+	if len(cacheSvc.deleted) != 1 || cacheSvc.deleted[0].Name != "official" {
+		t.Fatalf("deleted cache = %#v, want official cache deleted", cacheSvc.deleted)
 	}
 }
 
@@ -111,14 +188,24 @@ func TestStatusLineUsesFocusedPaneHelp(t *testing.T) {
 	m.width = 200
 
 	treeStatus := m.statusLine()
-	if !strings.Contains(treeStatus, "[l]expand") || !strings.Contains(treeStatus, "[/]search") || strings.Contains(treeStatus, "reload") {
+	for _, want := range []string{"[l]expand", "[h]parent", "[o]root", "[e]editor", "[i]download", "[I]target", "[/]search", "[Tab]registry"} {
+		if !strings.Contains(treeStatus, want) {
+			t.Fatalf("tree statusLine() = %q, want %q", treeStatus, want)
+		}
+	}
+	if strings.Contains(treeStatus, "[a]add") || strings.Contains(treeStatus, "[d]delete") {
 		t.Fatalf("tree statusLine() = %q, want tree help", treeStatus)
 	}
 
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyCtrlW})
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
 	registryStatus := m.statusLine()
-	if !strings.Contains(registryStatus, "[l]open") || !strings.Contains(registryStatus, "[Tab]focus") || strings.Contains(registryStatus, "expand") {
+	for _, want := range []string{"[l]open", "[a]add", "[e]edit", "[r]reload", "[d]delete", "[u]update", "[Tab]tree"} {
+		if !strings.Contains(registryStatus, want) {
+			t.Fatalf("registry statusLine() = %q, want %q", registryStatus, want)
+		}
+	}
+	if strings.Contains(registryStatus, "[i]download") || strings.Contains(registryStatus, "[h]parent") {
 		t.Fatalf("registry statusLine() = %q, want registry help", registryStatus)
 	}
 }
@@ -318,6 +405,7 @@ func TestTreeVimNavigationEntersAndLeavesDirectory(t *testing.T) {
 	service := testService(t, worktree, config.Config{})
 	m := openModelWithWorktree(t, service)
 
+	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyDown})
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
 	m = next.(model)
 	if cmd == nil {
@@ -406,8 +494,8 @@ func TestSearchInputRendersAboveFileList(t *testing.T) {
 	if !strings.Contains(text, "search") || !strings.Contains(text, "guide") {
 		t.Fatalf("treeLines() = %#v, want search input in context area", lines)
 	}
-	if !strings.Contains(text, "---") || !strings.Contains(text, "tree") {
-		t.Fatalf("treeLines() = %#v, want separator and header before file list", lines)
+	if !strings.Contains(text, "---") || strings.Contains(text, "repository contents") {
+		t.Fatalf("treeLines() = %#v, want separator without repository contents header", lines)
 	}
 }
 
@@ -416,6 +504,7 @@ func TestTreeToggleOpensDirectoryWithL(t *testing.T) {
 	service := testService(t, worktree, config.Config{})
 	m := openModelWithWorktree(t, service)
 
+	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyDown})
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
 	m = next.(model)
 	if cmd == nil {
@@ -424,13 +513,86 @@ func TestTreeToggleOpensDirectoryWithL(t *testing.T) {
 	m = updateModel(t, m, cmd())
 
 	entries := m.visibleEntries()
-	if len(entries) < 2 || entries[0].Path != "docs" || entries[1].Path != "docs/guide.md" {
+	if len(entries) < 3 || entries[0].Path != "" || entries[1].Path != "docs" || entries[2].Path != "docs/guide.md" {
 		t.Fatalf("visibleEntries() = %#v, want expanded docs tree", entries)
 	}
 	lines := plainLines(m.treeLines())
 	text := strings.Join(lines, "\n")
 	if !strings.Contains(text, "├── ▾ docs/") || !strings.Contains(text, "│   └── • guide.md") {
 		t.Fatalf("treeLines() = %#v, want expanded directory and child", lines)
+	}
+}
+
+func TestTreeRootIsSelectableAndDownloadsRepository(t *testing.T) {
+	worktree := createWorktree(t)
+	sessionCWD := t.TempDir()
+	service := testService(t, worktree, config.Config{})
+	m := openModelWithWorktree(t, service)
+	m.sessionCWD = sessionCWD
+
+	entries := m.visibleEntries()
+	if len(entries) == 0 || entries[0].Path != "" || entries[0].Type != app.EntryDir {
+		t.Fatalf("visibleEntries() = %#v, want repository root first", entries)
+	}
+	lines := strings.Join(plainLines(m.treeLines()), "\n")
+	if !strings.Contains(lines, "> /") || strings.Contains(lines, "repository root") {
+		t.Fatalf("treeLines() = %q, want selected root row", lines)
+	}
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("i")})
+	m = next.(model)
+	if cmd == nil {
+		t.Fatalf("download command = nil")
+	}
+	if m.operationKind != operationDownload || !strings.Contains(plainText(m.statusLine()), "downloading official") {
+		t.Fatalf("operation/status = %v/%q, want repository download progress", m.operationKind, plainText(m.statusLine()))
+	}
+	m = runOperationBatch(t, m, cmd)
+
+	assertFileContent(t, filepath.Join(sessionCWD, "official", "README.md"), "readme\n")
+}
+
+func TestSelectedLineUsesAnimatedCursorWithoutReverseBackground(t *testing.T) {
+	service := testService(t, createWorktree(t), config.Config{})
+	m := openModelWithWorktree(t, service)
+
+	rawLine := strings.Join(m.treeLines(), "\n")
+	if strings.Contains(rawLine, "[7m") || strings.Contains(rawLine, ";7m") {
+		t.Fatalf("treeLines() = %q, should not use reverse background for selected row", rawLine)
+	}
+
+	m = updateModel(t, m, selectionCursorTickMsg{})
+	lines := strings.Join(plainLines(m.treeLines()), "\n")
+	if !strings.Contains(lines, "› /") {
+		t.Fatalf("treeLines() = %q, want animated selected cursor", lines)
+	}
+}
+
+func TestTreeEditFileRequiresEditor(t *testing.T) {
+	t.Setenv("EDITOR", "")
+	service := testService(t, createWorktree(t), config.Config{})
+	m := openModelWithWorktree(t, service)
+	m.selectedEntry = 2
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	m = next.(model)
+
+	if cmd != nil || m.status != "EDITOR 未设置" {
+		t.Fatalf("cmd/status = %v/%q, want EDITOR warning without command", cmd, m.status)
+	}
+}
+
+func TestTreeEditFileUsesEditorCommand(t *testing.T) {
+	t.Setenv("EDITOR", "true")
+	service := testService(t, createWorktree(t), config.Config{})
+	m := openModelWithWorktree(t, service)
+	m.selectedEntry = 2
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	m = next.(model)
+
+	if cmd == nil || !strings.Contains(m.status, "正在用 editor 打开 README.md") {
+		t.Fatalf("cmd/status = %v/%q, want editor command", cmd, m.status)
 	}
 }
 
@@ -443,7 +605,7 @@ func TestDownloadExistingTargetOpensOverwriteConfirm(t *testing.T) {
 	service := testService(t, worktree, config.Config{})
 	m := openModelWithWorktree(t, service)
 	m.sessionCWD = sessionCWD
-	m.selectedEntry = 1
+	m.selectedEntry = 2
 
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("i")})
 	m = next.(model)
@@ -925,4 +1087,17 @@ func createWorktree(t *testing.T) string {
 		t.Fatalf("write guide: %v", err)
 	}
 	return root
+}
+
+// assertFileContent 校验指定文件内容。
+func assertFileContent(t *testing.T, filePath string, want string) {
+	t.Helper()
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", filePath, err)
+	}
+	if string(content) != want {
+		t.Fatalf("%s = %q, want %q", filePath, string(content), want)
+	}
 }

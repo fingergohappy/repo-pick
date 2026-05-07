@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/finger/repo-pick/internal/repopick/cache"
 	"github.com/finger/repo-pick/internal/repopick/config"
@@ -115,7 +116,8 @@ func TestServiceListRemoteBranchesUsesCache(t *testing.T) {
 func TestServiceEnsureAndUpdateRepositoryUseCache(t *testing.T) {
 	cacheSvc := &fakeCache{worktree: cache.Worktree{Dir: "/tmp/repo"}}
 	repo := config.Repository{Name: "official", URL: "repo"}
-	service := Service{Registry: &fakeRegistry{}, Cache: cacheSvc, Installer: install.Installer{}}
+	registrySvc := &fakeRegistry{}
+	service := Service{Registry: registrySvc, Cache: cacheSvc, Installer: install.Installer{}}
 
 	ensured, err := service.EnsureRepository(context.Background(), repo)
 	if err != nil {
@@ -132,6 +134,30 @@ func TestServiceEnsureAndUpdateRepositoryUseCache(t *testing.T) {
 	if len(cacheSvc.ensured) != 1 || len(cacheSvc.updated) != 1 {
 		t.Fatalf("cache calls ensure=%#v update=%#v", cacheSvc.ensured, cacheSvc.updated)
 	}
+	if len(registrySvc.updated) != 1 {
+		t.Fatalf("registry updates = %#v, want one cache update timestamp write", registrySvc.updated)
+	}
+	assertRFC3339Time(t, registrySvc.updated[0].repo.LastUpdatedAt)
+}
+
+func TestServiceEnsureRepositoryRecordsUpdatedAtForNewCache(t *testing.T) {
+	cacheSvc := &fakeCache{worktree: cache.Worktree{Dir: "/tmp/repo", Created: true}}
+	registrySvc := &fakeRegistry{}
+	repo := config.Repository{Name: "official", URL: "repo"}
+	service := Service{Registry: registrySvc, Cache: cacheSvc, Installer: install.Installer{}}
+
+	state, err := service.EnsureRepository(context.Background(), repo)
+	if err != nil {
+		t.Fatalf("EnsureRepository() error = %v", err)
+	}
+
+	if len(registrySvc.updated) != 1 || registrySvc.updated[0].name != "official" {
+		t.Fatalf("registry updates = %#v, want timestamp write for new cache", registrySvc.updated)
+	}
+	if state.Repository.LastUpdatedAt == "" || state.Repository.LastUpdatedAt != registrySvc.updated[0].repo.LastUpdatedAt {
+		t.Fatalf("state timestamp = %q, registry timestamp = %q", state.Repository.LastUpdatedAt, registrySvc.updated[0].repo.LastUpdatedAt)
+	}
+	assertRFC3339Time(t, state.Repository.LastUpdatedAt)
 }
 
 func TestServiceListAndSearchEntriesUseCachedWorktree(t *testing.T) {
@@ -157,6 +183,28 @@ func TestServiceListAndSearchEntriesUseCachedWorktree(t *testing.T) {
 	}
 	if len(searchResult.Entries) != 1 || searchResult.Entries[0].Path != "docs/guide.md" {
 		t.Fatalf("SearchEntries() = %#v, want docs/guide.md", searchResult.Entries)
+	}
+}
+
+func TestServiceResolveEntryPathReturnsCachedPath(t *testing.T) {
+	worktree := createWorktree(t)
+	repo := config.Repository{Name: "official", URL: "repo"}
+	service := Service{
+		Registry:  &fakeRegistry{},
+		Cache:     &fakeCache{worktree: cache.Worktree{Dir: worktree}},
+		Installer: install.Installer{},
+	}
+
+	result, err := service.ResolveEntryPath(context.Background(), ResolveEntryPathRequest{
+		Repository: repo,
+		Entry:      EntryResult{Name: "guide.md", Path: "docs/guide.md", Type: EntryFile, Size: 6},
+	})
+	if err != nil {
+		t.Fatalf("ResolveEntryPath() error = %v", err)
+	}
+
+	if result.Path != filepath.Join(worktree, "docs", "guide.md") {
+		t.Fatalf("Path = %q, want cached guide path", result.Path)
 	}
 }
 
@@ -453,5 +501,13 @@ func assertFileContent(t *testing.T, path string, want string) {
 	}
 	if string(data) != want {
 		t.Fatalf("%s content = %q, want %q", path, string(data), want)
+	}
+}
+
+func assertRFC3339Time(t *testing.T, value string) {
+	t.Helper()
+
+	if _, err := time.Parse(time.RFC3339, value); err != nil {
+		t.Fatalf("timestamp = %q, want RFC3339 time: %v", value, err)
 	}
 }

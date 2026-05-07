@@ -21,6 +21,9 @@ func TestServiceEnsureClonesFullShallowWorktree(t *testing.T) {
 		t.Fatalf("Ensure() error = %v", err)
 	}
 
+	if !worktree.Created {
+		t.Fatalf("Worktree.Created = false, want true for new cache")
+	}
 	assertFileContent(t, filepath.Join(worktree.Dir, "README.md"), "root readme\n")
 	assertFileContent(t, filepath.Join(worktree.Dir, "docs", "guide.md"), "guide\n")
 	if count := strings.TrimSpace(runGit(t, worktree.Dir, "rev-list", "--count", "HEAD")); count != "1" {
@@ -89,6 +92,9 @@ func TestServiceEnsureUsesExistingCacheWithoutGit(t *testing.T) {
 	if worktree.Dir != dir {
 		t.Fatalf("Worktree.Dir = %q, want %q", worktree.Dir, dir)
 	}
+	if worktree.Created {
+		t.Fatalf("Worktree.Created = true, want false for existing cache")
+	}
 }
 
 func TestServiceUpdateDeletesAndClonesAgain(t *testing.T) {
@@ -110,6 +116,9 @@ func TestServiceUpdateDeletesAndClonesAgain(t *testing.T) {
 	}
 	if updated.Dir != worktree.Dir {
 		t.Fatalf("Update() dir = %q, want same cache dir %q", updated.Dir, worktree.Dir)
+	}
+	if !updated.Created {
+		t.Fatalf("Update() Created = false, want true for refreshed cache")
 	}
 	if _, err := os.Stat(filepath.Join(updated.Dir, "local.txt")); !os.IsNotExist(err) {
 		t.Fatalf("Update() kept old cache content, stat error = %v", err)

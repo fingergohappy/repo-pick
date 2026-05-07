@@ -60,9 +60,19 @@ func (m *model) ensureTreeMaps() {
 
 // visibleTreeRows 返回当前 root 下展开后的可见树行。
 func (m model) visibleTreeRows() []treeRow {
-	rows := []treeRow{}
+	rows := []treeRow{{
+		entry:    m.treeRootEntry(),
+		expanded: true,
+		root:     true,
+	}}
 	m.appendTreeRows(&rows, m.currentPath, nil)
 	return rows
+}
+
+// treeRootEntry 返回右侧 tree 当前 root 对应的可选目录条目。
+func (m model) treeRootEntry() app.EntryResult {
+	name := displayPath(m.currentPath)
+	return app.EntryResult{Name: name, Path: m.currentPath, Type: app.EntryDir}
 }
 
 // appendTreeRows 递归追加指定目录下的可见树行。
@@ -147,6 +157,19 @@ func indexForRepositoryName(repositories []config.Repository, name string) int {
 		}
 	}
 	return clampCursor(0, len(repositories))
+}
+
+// replaceRepository 用最新 registry 状态替换左栏中的同名条目。
+func replaceRepository(repositories []config.Repository, updated config.Repository) []config.Repository {
+	name := strings.TrimSpace(updated.Name)
+	for i, repo := range repositories {
+		if strings.TrimSpace(repo.Name) == name {
+			next := append([]config.Repository{}, repositories...)
+			next[i] = updated
+			return next
+		}
+	}
+	return repositories
 }
 
 // displayPath 将空仓库路径展示为根目录。
