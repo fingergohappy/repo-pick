@@ -49,6 +49,12 @@ func TestEmptyRegistryUsesDesignedPlaceholder(t *testing.T) {
 	if !strings.Contains(lines, "暂无 registry") || !strings.Contains(lines, "添加 registry") {
 		t.Fatalf("registryLines() = %q, want designed empty placeholder", lines)
 	}
+	if !strings.Contains(lines, "╭") || !strings.Contains(lines, "╰") {
+		t.Fatalf("registryLines() = %q, want rounded empty placeholder", lines)
+	}
+	if !strings.Contains(lines, "a") || !strings.Contains(lines, "添加 registry") {
+		t.Fatalf("registryLines() = %q, want add registry CTA", lines)
+	}
 	if strings.Contains(lines, "a add") {
 		t.Fatalf("registryLines() = %q, should not use old empty placeholder", lines)
 	}
@@ -714,9 +720,25 @@ func TestAddRepositoryShowsModalAndUsesDefaultBranch(t *testing.T) {
 	if cmd == nil {
 		t.Fatalf("branch command = nil")
 	}
-	m = updateModel(t, m, cmd())
+	if view := plainText(m.View()); !strings.Contains(view, "- 正在获取远端分支") {
+		t.Fatalf("View() = %q, want initial branch loading spinner", view)
+	}
+	if status := plainText(m.statusLine()); strings.Contains(status, "正在获取远端分支") {
+		t.Fatalf("statusLine() = %q, should not show branch loading text", status)
+	}
+	m = updateModel(t, m, selectionCursorTickMsg{})
+	if view := plainText(m.View()); !strings.Contains(view, "\\ 正在获取远端分支") {
+		t.Fatalf("View() = %q, want animated branch loading spinner", view)
+	}
+	m = runBranchCommand(t, m, cmd)
 	if m.mode != modeAddBranch || len(m.pendingBranches) != 2 {
 		t.Fatalf("mode/branches = %v/%#v, want branch choices", m.mode, m.pendingBranches)
+	}
+	if view := m.View(); !strings.Contains(view, "已获取 2 个分支") || !strings.Contains(view, "dev") || !strings.Contains(view, "main") || strings.Contains(view, "正在获取远端分支") {
+		t.Fatalf("View() = %q, want branch choices immediately after load", view)
+	}
+	if status := plainText(m.statusLine()); strings.Contains(status, "已获取") {
+		t.Fatalf("statusLine() = %q, should not show fetched branch count", status)
 	}
 	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = next.(model)
@@ -768,7 +790,7 @@ func TestAddRepositoryArrowKeysMoveFocus(t *testing.T) {
 	if cmd == nil || m.mode != modeAddBranch {
 		t.Fatalf("mode/cmd = %v/%v, want branch focus and load command", m.mode, cmd)
 	}
-	m = updateModel(t, m, cmd())
+	m = runBranchCommand(t, m, cmd)
 
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	m = next.(model)
@@ -778,8 +800,8 @@ func TestAddRepositoryArrowKeysMoveFocus(t *testing.T) {
 
 	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = next.(model)
-	if cmd != nil || m.mode != modeAddBranch {
-		t.Fatalf("mode/cmd = %v/%v, want branch focus without reload", m.mode, cmd)
+	if m.mode != modeAddBranch || m.branchLoading {
+		t.Fatalf("mode/branchLoading = %v/%v, want branch focus without reload", m.mode, m.branchLoading)
 	}
 }
 
@@ -799,7 +821,7 @@ func TestAddRepositoryCanChooseBranch(t *testing.T) {
 	m.input.SetValue("https://github.com/org/tools")
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = next.(model)
-	m = updateModel(t, m, cmd())
+	m = runBranchCommand(t, m, cmd)
 
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyDown})
 	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -836,7 +858,7 @@ func TestAddRepositoryCanSearchRemoteBranch(t *testing.T) {
 	m.input.SetValue("https://github.com/org/tools")
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = next.(model)
-	m = updateModel(t, m, cmd())
+	m = runBranchCommand(t, m, cmd)
 
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("fl")})
 	if m.branchQuery != "fl" || m.selectedBranch != 1 {
@@ -895,7 +917,7 @@ func TestEditRepositoryShowsPrefilledModalAndPersists(t *testing.T) {
 	if cmd == nil {
 		t.Fatalf("branch command = nil")
 	}
-	m = updateModel(t, m, cmd())
+	m = runBranchCommand(t, m, cmd)
 	if m.mode != modeAddBranch || m.selectedBranch != 2 {
 		t.Fatalf("mode/selectedBranch = %v/%d, want branch selection on main", m.mode, m.selectedBranch)
 	}
@@ -944,6 +966,33 @@ func plainLines(lines []string) []string {
 		plain = append(plain, plainText(line))
 	}
 	return plain
+}
+
+func runBranchCommand(t *testing.T, m model, cmd tea.Cmd) model {
+	t.Helper()
+
+	if cmd == nil {
+		t.Fatalf("branch command = nil")
+	}
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return updateModel(t, m, msg)
+	}
+	for _, child := range batch {
+		if child == nil {
+			continue
+		}
+		childMsg := child()
+		if childMsg == nil {
+			continue
+		}
+		if _, ok := childMsg.(branchesLoadedMsg); ok {
+			m = updateModel(t, m, childMsg)
+			return m
+		}
+	}
+	return m
 }
 
 func runOperationBatch(t *testing.T, m model, cmd tea.Cmd) model {

@@ -612,7 +612,7 @@ func (m model) handleBranchesLoaded(msg branchesLoadedMsg) (model, tea.Cmd) {
 	m.pendingDefaultBranch = msg.defaultBranch
 	m.pendingBranches = msg.branches
 	m.selectedBranch = m.defaultBranchSelection()
-	m.status = fmt.Sprintf("已获取 %d 个分支", len(msg.branches))
+	m.status = ""
 	return m, nil
 }
 

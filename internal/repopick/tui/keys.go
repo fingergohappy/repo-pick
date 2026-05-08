@@ -428,10 +428,10 @@ func (m model) startAddBranchSelection(repoURL string) (model, tea.Cmd) {
 	m.mode = modeAddBranch
 	m.input.Placeholder = "branch search"
 	m.input.SetValue(m.branchQuery)
-	_ = m.input.Focus()
+	focusCmd := m.input.Focus()
 	if !needsLoad {
 		m.selectedBranch = clampCursor(m.selectedBranch, m.branchChoiceCount())
-		return m, nil
+		return m, focusCmd
 	}
 
 	m.pendingBranches = nil
@@ -439,8 +439,13 @@ func (m model) startAddBranchSelection(repoURL string) (model, tea.Cmd) {
 	m.selectedBranch = 0
 	m.branchLoading = true
 	m.branchErr = nil
-	m.status = "正在获取远端分支"
-	return m, m.listBranchesCommand(repoURL)
+	m.status = ""
+	cmds := []tea.Cmd{focusCmd, m.listBranchesCommand(repoURL)}
+	if !m.selectionCursorTicking {
+		m.selectionCursorTicking = true
+		cmds = append(cmds, selectionCursorTickCommand())
+	}
+	return m, tea.Batch(cmds...)
 }
 
 // updateBranchSearch 将普通输入写入分支搜索框并刷新分支选中项。

@@ -67,6 +67,12 @@ var registryEmptyTitleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("252
 // registryEmptyHintStyle 是 registry 空状态说明样式。
 var registryEmptyHintStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 
+// registryEmptyCardStyle 是 registry 空状态提示块样式。
+var registryEmptyCardStyle = lipgloss.NewStyle().
+	Border(lipgloss.RoundedBorder()).
+	BorderForeground(lipgloss.Color("238")).
+	Padding(0, 1)
+
 // registryEmptyKeyStyle 是 registry 空状态快捷键样式。
 var registryEmptyKeyStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("255")).
@@ -257,15 +263,25 @@ func sameCalendarDay(a time.Time, b time.Time) bool {
 // emptyRegistryLines 生成 registry 为空时的占位内容。
 func (m model) emptyRegistryLines() []string {
 	leftWidth, _ := paneWidths(m.width)
-	contentWidth := max(12, leftWidth-4)
+	contentWidth := paneContentWidth(leftWidth)
+	cardWidth := min(contentWidth, 28)
+	styleWidth := max(10, cardWidth-2)
+	innerWidth := max(8, styleWidth-2)
+	cta := fmt.Sprintf("%s %s", registryEmptyKeyStyle.Render("a"), registryEmptyActionStyle.Render("添加 registry"))
+	card := registryEmptyCardStyle.
+		Width(styleWidth).
+		Align(lipgloss.Center).
+		Render(strings.Join([]string{
+			registryEmptyTitleStyle.Render("暂无 registry"),
+			registryEmptyHintStyle.Render("添加后显示在这里"),
+			truncateVisible(cta, innerWidth),
+		}, "\n"))
 
-	return []string{
-		"",
-		centerLine(registryEmptyTitleStyle.Render("暂无 registry"), contentWidth),
-		centerLine(registryEmptyHintStyle.Render("添加 registry 后会显示在这里"), contentWidth),
-		"",
-		centerLine(fmt.Sprintf("%s %s", registryEmptyKeyStyle.Render("a"), registryEmptyActionStyle.Render("添加 registry")), contentWidth),
+	lines := strings.Split(card, "\n")
+	for i, line := range lines {
+		lines[i] = centerLine(line, contentWidth)
 	}
+	return append([]string{""}, lines...)
 }
 
 // treeLines 生成右栏目录树文本行。
@@ -667,7 +683,7 @@ func (m model) branchSelectLines() []string {
 	if m.branchLoading {
 		return []string{
 			modalFieldLabelStyle.Render("branch"),
-			modalDescStyle.Render("  正在获取远端分支..."),
+			modalDescStyle.Render("  " + m.branchLoadingStatus() + "..."),
 		}
 	}
 
@@ -687,6 +703,7 @@ func (m model) branchSelectLines() []string {
 		lines = append(lines, modalDescStyle.Render(message))
 		return lines
 	}
+	lines = append(lines, modalDescStyle.Render(fmt.Sprintf("  已获取 %d 个分支", len(m.pendingBranches))))
 
 	choices := m.branchChoiceLabels()
 	if strings.TrimSpace(m.branchQuery) != "" && len(m.filteredBranchNames()) == 0 {

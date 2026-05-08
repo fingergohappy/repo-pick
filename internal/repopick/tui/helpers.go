@@ -365,6 +365,12 @@ func (m model) operationStatus() string {
 	return frame + " " + m.operationLabel
 }
 
+// branchLoadingStatus 返回远端分支加载中的动画文本。
+func (m model) branchLoadingStatus() string {
+	frame := operationFrames[m.selectionCursorFrame%len(operationFrames)]
+	return frame + " 正在获取远端分支"
+}
+
 // treeOperationInProgress 判断当前长耗时操作是否应在右侧树面板展示。
 func (m model) treeOperationInProgress() bool {
 	return m.operationKind == operationOpen || m.operationKind == operationUpdate
