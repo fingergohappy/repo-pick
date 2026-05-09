@@ -70,12 +70,12 @@ func (m model) addRepositoryModalView() string {
 		}
 		return modalFieldValueStyle
 	}
-	lines = append(lines, renderKeyValueTable(fieldRows, innerWidth, fieldResolver))
+	lines = append(lines, renderFixedKeyValueTable(fieldRows, innerWidth, fieldResolver))
 
 	if m.mode == modeAddBranch {
 		lines = append(lines, m.branchSelectView())
 	} else {
-		lines = append(lines, renderKeyValueTable([][2]string{{"branch", branch}}, innerWidth, func(row int, col int) lipgloss.Style {
+		lines = append(lines, renderFixedKeyValueTable([][2]string{{"branch", branch}}, innerWidth, func(row int, col int) lipgloss.Style {
 			if col == 0 {
 				return modalFieldLabelStyle
 			}
@@ -131,7 +131,7 @@ func modalDividerLine(width int) string {
 // branchSelectView 生成 registry 表单里的分支选择块。
 func (m model) branchSelectView() string {
 	if m.branchLoading {
-		return renderKeyValueTable([][2]string{{"branch", m.branchLoadingStatus() + "..."}}, max(24, min(72, m.width-10)), func(row int, col int) lipgloss.Style {
+		return renderFixedKeyValueTable([][2]string{{"branch", m.branchLoadingStatus() + "..."}}, max(24, min(72, m.width-10)), func(row int, col int) lipgloss.Style {
 			if col == 0 {
 				return modalFieldLabelStyle
 			}
@@ -145,7 +145,7 @@ func (m model) branchSelectView() string {
 	}
 	width := max(24, min(72, m.width-10))
 	parts := []string{
-		renderKeyValueTable([][2]string{
+		renderFixedKeyValueTable([][2]string{
 			{"branch", ""},
 			{"search", emptyPlaceholder(query, "-")},
 		}, width, func(row int, col int) lipgloss.Style {
@@ -176,7 +176,7 @@ func (m model) branchSelectView() string {
 		if i == m.selectedBranch {
 			cursor = m.selectionCursor()
 		}
-		rows = append(rows, []string{cursor, choices[i]})
+		rows = append(rows, []string{fmt.Sprintf("%s %s", cursor, choices[i])})
 	}
 	if start > 0 {
 		parts = append(parts, modalDescStyle.Render("..."))
@@ -186,9 +186,6 @@ func (m model) branchSelectView() string {
 		selected = -1
 	}
 	parts = append(parts, renderSelectableTable(rows, selected, width, func(row int, col int) lipgloss.Style {
-		if col == 0 {
-			return modalFieldLabelStyle
-		}
 		return modalFieldValueStyle
 	}))
 	if end < len(choices) {

@@ -880,6 +880,28 @@ func TestAddRepositoryCanSearchRemoteBranch(t *testing.T) {
 	}
 }
 
+func TestBranchSelectorKeepsCursorNextToBranchLabel(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.mode = modeAddBranch
+	m.pendingDefaultBranch = "main"
+	m.pendingBranches = []string{"main"}
+	m.selectionCursorFrame = 2
+
+	lines := plainBlock(m.branchSelectView())
+	selectedLine := lineContaining(lines, "使用远端默认分支")
+	cursorCol := strings.Index(selectedLine, "»")
+	branchCol := strings.Index(selectedLine, "使用远端默认分支")
+
+	if cursorCol < 0 || branchCol < 0 {
+		t.Fatalf("branchSelectView() = %#v, want selected default branch line", lines)
+	}
+	cursorVisibleCol := lipgloss.Width(selectedLine[:cursorCol])
+	branchVisibleCol := lipgloss.Width(selectedLine[:branchCol])
+	if branchVisibleCol != cursorVisibleCol+2 {
+		t.Fatalf("branch column = %d, cursor column = %d in %q, want one space after cursor", branchCol, cursorCol, selectedLine)
+	}
+}
+
 func TestEditRepositoryShowsPrefilledModalAndPersists(t *testing.T) {
 	store := &memoryStore{cfg: config.Config{
 		Repositories: []config.Repository{{Name: "official", URL: "https://github.com/org/tools", Branch: "main"}},
@@ -956,6 +978,35 @@ func TestRegistryModalInactiveURLAlignsAfterNameCursor(t *testing.T) {
 	}
 	if urlCol != cursorCol+2 {
 		t.Fatalf("url column = %d, cursor column = %d in %#v, want url aligned with input text after prompt", urlCol, cursorCol, lines)
+	}
+}
+
+func TestRegistryModalColumnsStayStableWhenURLInputChanges(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.pendingName = "aa"
+	m, _ = m.focusAddURL("")
+
+	placeholderLines := plainBlock(m.addRepositoryModalView())
+	placeholderNameLine := lineContaining(placeholderLines, "aa")
+	placeholderURLLine := lineContaining(placeholderLines, "repo url")
+	placeholderNameCol := strings.Index(placeholderNameLine, "aa")
+	placeholderURLCol := strings.Index(placeholderURLLine, "repo url")
+
+	m.input.SetValue("i")
+	inputLines := plainBlock(m.addRepositoryModalView())
+	inputNameLine := lineContaining(inputLines, "aa")
+	inputURLLine := lineContaining(inputLines, "> i")
+	inputNameCol := strings.Index(inputNameLine, "aa")
+	inputURLCol := strings.Index(inputURLLine, "i")
+
+	if placeholderNameCol < 0 || placeholderURLCol < 0 || inputNameCol < 0 || inputURLCol < 0 {
+		t.Fatalf("modal lines before = %#v, after = %#v, want name and URL input columns", placeholderLines, inputLines)
+	}
+	if placeholderNameCol != inputNameCol || placeholderURLCol != inputURLCol {
+		t.Fatalf("columns before name/url = %d/%d, after = %d/%d; lines before = %#v, after = %#v", placeholderNameCol, placeholderURLCol, inputNameCol, inputURLCol, placeholderLines, inputLines)
+	}
+	if inputNameCol != inputURLCol {
+		t.Fatalf("name column = %d, URL input column = %d in %#v, want aligned field values", inputNameCol, inputURLCol, inputLines)
 	}
 }
 

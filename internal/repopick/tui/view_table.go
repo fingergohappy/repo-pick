@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 )
@@ -54,6 +56,43 @@ func renderKeyValueTable(rows [][2]string, width int, resolver tableStyleResolve
 		items[i] = []string{row[0], row[1]}
 	}
 	return renderTableRows(items, width, resolver)
+}
+
+// renderFixedKeyValueTable 渲染固定标签列宽的 key/value 布局，避免输入内容变化时列起点跳动。
+func renderFixedKeyValueTable(rows [][2]string, width int, resolver tableStyleResolver) string {
+	if width <= 0 || len(rows) == 0 {
+		return ""
+	}
+
+	labelWidth := 1
+	for _, row := range rows {
+		labelWidth = max(labelWidth, lipgloss.Width(firstLine(row[0])))
+	}
+	gapWidth := 2
+	if width <= labelWidth+gapWidth {
+		labelWidth = max(1, width-1)
+		gapWidth = 1
+	}
+	valueWidth := max(1, width-labelWidth-gapWidth)
+
+	lines := make([]string, 0, len(rows))
+	for rowIndex, row := range rows {
+		labelStyle := lipgloss.NewStyle()
+		valueStyle := lipgloss.NewStyle()
+		if resolver != nil {
+			labelStyle = resolver(rowIndex, 0)
+			valueStyle = resolver(rowIndex, 1)
+		}
+
+		label := truncateVisible(firstLine(row[0]), labelWidth)
+		value := truncateVisible(firstLine(row[1]), valueWidth)
+		lines = append(lines,
+			labelStyle.Width(labelWidth).Render(label)+
+				strings.Repeat(" ", gapWidth)+
+				valueStyle.Width(valueWidth).Render(value),
+		)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // renderSelectableTable 渲染可选表格并对 selected 行使用高亮。
