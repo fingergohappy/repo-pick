@@ -44,7 +44,7 @@ func TestModelStartsWithRegistryFocusAndLoadsRepositories(t *testing.T) {
 func TestEmptyRegistryUsesDesignedPlaceholder(t *testing.T) {
 	m := newModel(context.Background(), app.Service{}, t.TempDir())
 
-	lines := strings.Join(plainLines(m.registryLines()), "\n")
+	lines := strings.Join(plainBlock(m.registryLinesView()), "\n")
 
 	if !strings.Contains(lines, "暂无 registry") || !strings.Contains(lines, "添加 registry") {
 		t.Fatalf("registryLines() = %q, want designed empty placeholder", lines)
@@ -61,10 +61,9 @@ func TestEmptyRegistryUsesDesignedPlaceholder(t *testing.T) {
 }
 
 func TestPaneTitleIsCenteredWithDivider(t *testing.T) {
-	m := newModel(context.Background(), app.Service{}, t.TempDir())
 	width := 24
 
-	title := plainText(m.paneTitleLine("Registry (1)", width, true))
+	title := plainText(renderPaneTitleLine("Registry (1)", width, true))
 	if strings.Contains(title, ">") {
 		t.Fatalf("paneTitleLine() = %q, should not include selection cursor", title)
 	}
@@ -72,7 +71,7 @@ func TestPaneTitleIsCenteredWithDivider(t *testing.T) {
 		t.Fatalf("paneTitleLine() = %q, want centered title", title)
 	}
 
-	divider := plainText(m.paneTitleDividerLine(width))
+	divider := plainText(renderPaneSeparatorLine(width))
 	if lipgloss.Width(divider) != width || !strings.Contains(divider, "─") {
 		t.Fatalf("paneTitleDividerLine() = %q, want full-width divider", divider)
 	}
@@ -85,7 +84,7 @@ func TestRegistryLinesShowLastUpdatedAt(t *testing.T) {
 		{Name: "personal", URL: "repo2"},
 	}
 
-	lines := strings.Join(plainLines(m.registryLines()), "\n")
+	lines := strings.Join(plainBlock(m.registryLinesView()), "\n")
 
 	if !strings.Contains(lines, "official") || !strings.Contains(lines, "1999") {
 		t.Fatalf("registryLines() = %q, want last updated year", lines)
@@ -158,12 +157,12 @@ func TestCtrlWLFocusesRepositoryTreeAndOpensSelectedRepository(t *testing.T) {
 	if cmd == nil {
 		t.Fatalf("ctrl-w l command = nil, want open repository command")
 	}
-	treeLoading := strings.Join(plainLines(m.treeLines()), "\n")
+	treeLoading := strings.Join(plainBlock(m.treeLinesView()), "\n")
 	if m.operationKind != operationOpen || !strings.Contains(treeLoading, "loading repo cache: official") || strings.Contains(plainText(m.statusLine()), "loading repo cache") {
 		t.Fatalf("operation/tree/status = %v/%q/%q, want open progress in tree only", m.operationKind, treeLoading, plainText(m.statusLine()))
 	}
 	m = updateModel(t, m, operationProgressMsg{kind: operationOpen, baseLabel: "loading repo cache: official", event: app.ProgressEvent{Text: "Receiving objects: 50%", Percent: 50}})
-	if treeLoading = strings.Join(plainLines(m.treeLines()), "\n"); !strings.Contains(treeLoading, "50%") {
+	if treeLoading = strings.Join(plainBlock(m.treeLinesView()), "\n"); !strings.Contains(treeLoading, "50%") {
 		t.Fatalf("treeLines() = %q, want bubbles progress percentage", treeLoading)
 	}
 	m = runOperationBatch(t, m, cmd)
@@ -276,11 +275,11 @@ func TestTreeContextShowsRepositoryMetadata(t *testing.T) {
 	}
 	m.currentPath = "docs"
 
-	lines := strings.Join(plainLines(m.treeContextLines()), "\n")
+	lines := strings.Join(plainBlock(m.treeContextLinesView()), "\n")
 
-	for _, want := range []string{"registry  aa", "url  https://github.com/anthropics/skills.git", "branch  main", "path  /docs"} {
+	for _, want := range []string{"registry", "aa", "url", "https://github.com/anthropics/skills.git", "branch", "main", "path", "/docs"} {
 		if !strings.Contains(lines, want) {
-			t.Fatalf("treeContextLines() = %q, want %q", lines, want)
+			t.Fatalf("treeContextLinesView() = %q, want %q", lines, want)
 		}
 	}
 }
@@ -310,7 +309,7 @@ func TestRegistryLinesWindowAroundSelectedRepo(t *testing.T) {
 	}
 	m.selectedRepo = 30
 
-	lines := strings.Join(plainLines(m.registryLines()), "\n")
+	lines := strings.Join(plainBlock(m.registryLinesView()), "\n")
 
 	if !strings.Contains(lines, "repo-30") {
 		t.Fatalf("registryLines() = %q, want selected repo in window", lines)
@@ -318,7 +317,7 @@ func TestRegistryLinesWindowAroundSelectedRepo(t *testing.T) {
 	if strings.Contains(lines, "repo-00") {
 		t.Fatalf("registryLines() = %q, want clipped list window", lines)
 	}
-	if got, wantMax := len(plainLines(m.registryLines())), m.paneItemRows(); got > wantMax {
+	if got, wantMax := len(plainBlock(m.registryLinesView())), m.paneItemRows(); got > wantMax {
 		t.Fatalf("registryLines() length = %d, want <= %d", got, wantMax)
 	}
 }
@@ -340,7 +339,7 @@ func TestRegistrySelectionShowsAnimatedPreview(t *testing.T) {
 		t.Fatalf("registry selection animation command = nil")
 	}
 
-	lines := strings.Join(plainLines(m.treeLines()), "\n")
+	lines := strings.Join(plainBlock(m.treeLinesView()), "\n")
 	if !strings.Contains(lines, "已选择 registry") || !strings.Contains(lines, "personal [dev]") || !strings.Contains(lines, "repo2") {
 		t.Fatalf("treeLines() = %q, want selected registry preview", lines)
 	}
@@ -368,12 +367,12 @@ func TestRegistrySelectionReturnsToOpenedRegistryPreview(t *testing.T) {
 	m.resetTreeRoot("", []app.EntryResult{{Name: "README.md", Path: "README.md", Type: app.EntryFile, Size: 6}})
 
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	if lines := strings.Join(plainLines(m.treeLines()), "\n"); !strings.Contains(lines, "已选择 registry") || strings.Contains(lines, "README.md") {
+	if lines := strings.Join(plainBlock(m.treeLinesView()), "\n"); !strings.Contains(lines, "已选择 registry") || strings.Contains(lines, "README.md") {
 		t.Fatalf("treeLines() = %q, want registry preview after moving away", lines)
 	}
 
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
-	lines := strings.Join(plainLines(m.treeLines()), "\n")
+	lines := strings.Join(plainBlock(m.treeLinesView()), "\n")
 	if !strings.Contains(lines, "已选择 registry") || !strings.Contains(lines, "aa [main]") || !strings.Contains(lines, "按 l 打开该 repository") {
 		t.Fatalf("treeLines() = %q, want registry preview after returning to opened repo", lines)
 	}
@@ -456,7 +455,7 @@ func TestSearchShowsRepositoryPathResults(t *testing.T) {
 	if len(m.searchResults) != 1 || m.searchResults[0].Path != "docs/guide.md" {
 		t.Fatalf("searchResults = %#v, want guide", m.searchResults)
 	}
-	lines := plainLines(m.treeLines())
+	lines := plainBlock(m.treeLinesView())
 	text := strings.Join(lines, "\n")
 	if !strings.Contains(text, "search") || !strings.Contains(text, "guide") {
 		t.Fatalf("treeLines() = %#v, want search context", lines)
@@ -494,7 +493,7 @@ func TestSearchInputRendersAboveFileList(t *testing.T) {
 
 	m.mode = modeSearch
 	m.input.SetValue("guide")
-	lines := plainLines(m.treeLines())
+	lines := plainBlock(m.treeLinesView())
 	text := strings.Join(lines, "\n")
 
 	if !strings.Contains(text, "search") || !strings.Contains(text, "guide") {
@@ -522,7 +521,7 @@ func TestTreeToggleOpensDirectoryWithL(t *testing.T) {
 	if len(entries) < 3 || entries[0].Path != "" || entries[1].Path != "docs" || entries[2].Path != "docs/guide.md" {
 		t.Fatalf("visibleEntries() = %#v, want expanded docs tree", entries)
 	}
-	lines := plainLines(m.treeLines())
+	lines := plainBlock(m.treeLinesView())
 	text := strings.Join(lines, "\n")
 	if !strings.Contains(text, "├── ▾ docs/") || !strings.Contains(text, "│   └── • guide.md") {
 		t.Fatalf("treeLines() = %#v, want expanded directory and child", lines)
@@ -540,7 +539,7 @@ func TestTreeRootIsSelectableAndDownloadsRepository(t *testing.T) {
 	if len(entries) == 0 || entries[0].Path != "" || entries[0].Type != app.EntryDir {
 		t.Fatalf("visibleEntries() = %#v, want repository root first", entries)
 	}
-	lines := strings.Join(plainLines(m.treeLines()), "\n")
+	lines := strings.Join(plainBlock(m.treeLinesView()), "\n")
 	if !strings.Contains(lines, "> /") || strings.Contains(lines, "repository root") {
 		t.Fatalf("treeLines() = %q, want selected root row", lines)
 	}
@@ -562,13 +561,13 @@ func TestSelectedLineUsesAnimatedCursorWithoutReverseBackground(t *testing.T) {
 	service := testService(t, createWorktree(t), config.Config{})
 	m := openModelWithWorktree(t, service)
 
-	rawLine := strings.Join(m.treeLines(), "\n")
+	rawLine := m.treeLinesView()
 	if strings.Contains(rawLine, "[7m") || strings.Contains(rawLine, ";7m") {
 		t.Fatalf("treeLines() = %q, should not use reverse background for selected row", rawLine)
 	}
 
 	m = updateModel(t, m, selectionCursorTickMsg{})
-	lines := strings.Join(plainLines(m.treeLines()), "\n")
+	lines := strings.Join(plainBlock(m.treeLinesView()), "\n")
 	if !strings.Contains(lines, "› /") {
 		t.Fatalf("treeLines() = %q, want animated selected cursor", lines)
 	}
@@ -643,7 +642,7 @@ func TestUpdateRepositoryShowsProgress(t *testing.T) {
 	if cmd == nil {
 		t.Fatalf("update command = nil")
 	}
-	treeLoading := strings.Join(plainLines(m.treeLines()), "\n")
+	treeLoading := strings.Join(plainBlock(m.treeLinesView()), "\n")
 	if m.operationKind != operationUpdate || !strings.Contains(treeLoading, "updating repo cache: official") || strings.Contains(plainText(m.statusLine()), "updating repo cache") {
 		t.Fatalf("operation/tree/status = %v/%q/%q, want update progress in tree only", m.operationKind, treeLoading, plainText(m.statusLine()))
 	}
@@ -678,7 +677,7 @@ func TestTreeLoadingStartsNearTopThird(t *testing.T) {
 	m.height = 30
 	m.startOperation(operationUpdate, "updating repo cache: official")
 
-	lines := plainLines(m.treeLines())
+	lines := plainBlock(m.treeLinesView())
 	firstContentLine := -1
 	for i, line := range lines {
 		if strings.TrimSpace(line) != "" {
@@ -864,7 +863,7 @@ func TestAddRepositoryCanSearchRemoteBranch(t *testing.T) {
 	if m.branchQuery != "fl" || m.selectedBranch != 1 {
 		t.Fatalf("branchQuery/selectedBranch = %q/%d, want fl/1", m.branchQuery, m.selectedBranch)
 	}
-	lines := strings.Join(plainLines(m.branchSelectLines()), "\n")
+	lines := strings.Join(plainBlock(m.branchSelectView()), "\n")
 	if !strings.Contains(lines, "feature/login") || strings.Contains(lines, "release") || strings.Contains(lines, "dev") {
 		t.Fatalf("branchSelectLines() = %q, want filtered feature/login only", lines)
 	}
@@ -941,6 +940,25 @@ func TestEditRepositoryShowsPrefilledModalAndPersists(t *testing.T) {
 	}
 }
 
+func TestRegistryModalInactiveURLAlignsAfterNameCursor(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.mode = modeAddName
+	m.pendingURL = "git@github.com:anthropics/skills.git"
+
+	lines := plainBlock(m.addRepositoryModalView())
+	nameLine := lineContaining(lines, "name")
+	urlLine := lineContaining(lines, m.pendingURL)
+	cursorCol := strings.Index(nameLine, ">")
+	urlCol := strings.Index(urlLine, m.pendingURL)
+
+	if cursorCol < 0 || urlCol < 0 {
+		t.Fatalf("modal lines = %#v, want name cursor and url", lines)
+	}
+	if urlCol != cursorCol+2 {
+		t.Fatalf("url column = %d, cursor column = %d in %#v, want url aligned with input text after prompt", urlCol, cursorCol, lines)
+	}
+}
+
 func TestViewUsesRepositoryTreeInsteadOfSkillPreview(t *testing.T) {
 	m := newModel(context.Background(), app.Service{}, t.TempDir())
 
@@ -966,6 +984,19 @@ func plainLines(lines []string) []string {
 		plain = append(plain, plainText(line))
 	}
 	return plain
+}
+
+func plainBlock(value string) []string {
+	return plainLines(splitRenderedLines(value))
+}
+
+func lineContaining(lines []string, value string) string {
+	for _, line := range lines {
+		if strings.Contains(line, value) {
+			return line
+		}
+	}
+	return ""
 }
 
 func runBranchCommand(t *testing.T, m model, cmd tea.Cmd) model {
