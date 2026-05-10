@@ -94,6 +94,22 @@ func TestRegistryLinesShowLastUpdatedAt(t *testing.T) {
 	}
 }
 
+func TestRegistryLinesShowNameWithoutBranch(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.repositories = []config.Repository{
+		{Name: "anthropics", URL: "repo", Branch: "andibrae/create-top-level-namespace", LastUpdatedAt: "1999-01-02T03:04:05Z"},
+	}
+
+	lines := strings.Join(plainBlock(m.registryLinesView()), "\n")
+
+	if !strings.Contains(lines, "anthropics") || !strings.Contains(lines, "1999") {
+		t.Fatalf("registryLines() = %q, want registry name and updated time", lines)
+	}
+	if strings.Contains(lines, "andibrae") || strings.Contains(lines, "create-top-level") || strings.Contains(lines, "[") {
+		t.Fatalf("registryLines() = %q, should not show branch in registry list", lines)
+	}
+}
+
 func TestDeleteRepositoryShowsConfirmModalBeforeRemoving(t *testing.T) {
 	store := &memoryStore{cfg: config.Config{
 		Repositories: []config.Repository{{Name: "official", URL: "https://github.com/org/tools", Branch: "main"}},
@@ -214,30 +230,44 @@ func TestCtrlWHFocusesRegistry(t *testing.T) {
 	}
 }
 
+func TestHFocusesRegistryFromTree(t *testing.T) {
+	service := testService(t, createWorktree(t), config.Config{})
+	m := openModelWithWorktree(t, service)
+
+	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("H")})
+
+	if m.focus != focusRegistry {
+		t.Fatalf("focus = %v, want registry", m.focus)
+	}
+	if m.status != "已切到 registry" {
+		t.Fatalf("status = %q, want registry focus message", m.status)
+	}
+}
+
 func TestStatusLineUsesFocusedPaneHelp(t *testing.T) {
 	service := testService(t, createWorktree(t), config.Config{})
 	m := openModelWithWorktree(t, service)
 	m.width = 200
 
 	treeStatus := m.statusLine()
-	for _, want := range []string{"[l]expand", "[h]parent", "[o]root", "[e]editor", "[i]download", "[I]target", "[/]search", "[Tab]registry"} {
+	for _, want := range []string{"[l] expand", "[h] parent", "[H] registry", "[o] root", "[e] editor", "[i] download", "[I] target", "[/] search", "[Tab] registry"} {
 		if !strings.Contains(treeStatus, want) {
 			t.Fatalf("tree statusLine() = %q, want %q", treeStatus, want)
 		}
 	}
-	if strings.Contains(treeStatus, "[a]add") || strings.Contains(treeStatus, "[d]delete") {
+	if strings.Contains(treeStatus, "[a] add") || strings.Contains(treeStatus, "[d] delete") {
 		t.Fatalf("tree statusLine() = %q, want tree help", treeStatus)
 	}
 
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyCtrlW})
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
 	registryStatus := m.statusLine()
-	for _, want := range []string{"[l]open", "[a]add", "[e]edit", "[r]reload", "[d]delete", "[u]update", "[Tab]tree"} {
+	for _, want := range []string{"[l] open", "[a] add", "[e] edit", "[r] reload", "[d] delete", "[u] update", "[Tab] tree"} {
 		if !strings.Contains(registryStatus, want) {
 			t.Fatalf("registry statusLine() = %q, want %q", registryStatus, want)
 		}
 	}
-	if strings.Contains(registryStatus, "[i]download") || strings.Contains(registryStatus, "[h]parent") {
+	if strings.Contains(registryStatus, "[i] download") || strings.Contains(registryStatus, "[h] parent") {
 		t.Fatalf("registry statusLine() = %q, want registry help", registryStatus)
 	}
 }
@@ -629,6 +659,85 @@ func TestSelectedLineUsesAnimatedCursorWithoutReverseBackground(t *testing.T) {
 	}
 }
 
+func TestStylesUseCatppuccinMochaPalette(t *testing.T) {
+	if got := paneTitleFocusedStyle.GetForeground(); got != lipgloss.Color("#89b4fa") {
+		t.Fatalf("focused pane title foreground = %#v, want Catppuccin Mocha blue", got)
+	}
+	if got := registryNameStyle(false).GetForeground(); got != lipgloss.Color("#cba6f7") {
+		t.Fatalf("registry name foreground = %#v, want Catppuccin Mocha mauve", got)
+	}
+	if got := registryUpdatedAtStyle(false).GetForeground(); got != lipgloss.Color("#f9e2af") {
+		t.Fatalf("registry updated time foreground = %#v, want Catppuccin Mocha yellow", got)
+	}
+	if got := statusHelpStyle.GetForeground(); got != lipgloss.Color("#6c7086") {
+		t.Fatalf("status help foreground = %#v, want Catppuccin Mocha overlay0", got)
+	}
+	if got := statusTextStyle.GetForeground(); got != lipgloss.Color("#94e2d5") {
+		t.Fatalf("status text foreground = %#v, want Catppuccin Mocha teal", got)
+	}
+	if got := statusHelpKeyStyle.GetForeground(); got != lipgloss.Color("#f9e2af") {
+		t.Fatalf("status help key foreground = %#v, want Catppuccin Mocha yellow", got)
+	}
+	if got := statusHelpDescStyle.GetForeground(); got != lipgloss.Color("#a6adc8") {
+		t.Fatalf("status help desc foreground = %#v, want Catppuccin Mocha subtext0", got)
+	}
+	if got := modalFieldValueStyle.GetForeground(); got != lipgloss.Color("#cdd6f4") {
+		t.Fatalf("modal field value foreground = %#v, want Catppuccin Mocha text", got)
+	}
+	if got := treeMetaValueStyle("registry").GetForeground(); got != lipgloss.Color("#cba6f7") {
+		t.Fatalf("tree registry foreground = %#v, want Catppuccin Mocha mauve", got)
+	}
+	if got := treeMetaValueStyle("url").GetForeground(); got != lipgloss.Color("#89dceb") {
+		t.Fatalf("tree url foreground = %#v, want Catppuccin Mocha sky", got)
+	}
+	if got := treeMetaValueStyle("branch").GetForeground(); got != lipgloss.Color("#a6e3a1") {
+		t.Fatalf("tree branch foreground = %#v, want Catppuccin Mocha green", got)
+	}
+	if got := treeMetaValueStyle("path").GetForeground(); got != lipgloss.Color("#fab387") {
+		t.Fatalf("tree path foreground = %#v, want Catppuccin Mocha peach", got)
+	}
+	if got := modalRegistryTitleStyle(false).GetForeground(); got != lipgloss.Color("#a6e3a1") {
+		t.Fatalf("add registry title foreground = %#v, want Catppuccin Mocha green", got)
+	}
+	if got := modalRegistryTitleStyle(true).GetForeground(); got != lipgloss.Color("#fab387") {
+		t.Fatalf("edit registry title foreground = %#v, want Catppuccin Mocha peach", got)
+	}
+	if got := modalRegistryFieldValueStyle("Name", false).GetForeground(); got != lipgloss.Color("#cba6f7") {
+		t.Fatalf("modal registry name foreground = %#v, want Catppuccin Mocha mauve", got)
+	}
+	if got := modalRegistryFieldValueStyle("URL", false).GetForeground(); got != lipgloss.Color("#89dceb") {
+		t.Fatalf("modal registry URL foreground = %#v, want Catppuccin Mocha sky", got)
+	}
+	if got := modalRegistryFieldValueStyle("Branch", false).GetForeground(); got != lipgloss.Color("#a6e3a1") {
+		t.Fatalf("modal registry branch foreground = %#v, want Catppuccin Mocha green", got)
+	}
+	if got := modalRegistryFieldValueStyle("Name", true).GetForeground(); got != lipgloss.Color("#f9e2af") {
+		t.Fatalf("modal registry active field foreground = %#v, want Catppuccin Mocha yellow", got)
+	}
+	if got := modalBranchChoiceStyle(false).GetForeground(); got != lipgloss.Color("#a6e3a1") {
+		t.Fatalf("modal branch choice foreground = %#v, want Catppuccin Mocha green", got)
+	}
+	if got := modalBranchSelectedLineStyle(70).GetBackground(); got != lipgloss.Color("#313244") {
+		t.Fatalf("selected branch background = %#v, want Catppuccin Mocha surface0", got)
+	}
+}
+
+func TestStatusHelpRendersKeysAndDescriptionsWithDifferentColors(t *testing.T) {
+	help := " | [H] registry [?] help"
+
+	rendered := renderStatusHelp(help)
+
+	if !strings.Contains(rendered, statusHelpKeyStyle.Render("[H]")) {
+		t.Fatalf("renderStatusHelp() = %q, want styled key", rendered)
+	}
+	if !strings.Contains(rendered, statusHelpDescStyle.Render("registry")) {
+		t.Fatalf("renderStatusHelp() = %q, want styled description", rendered)
+	}
+	if plain := plainText(rendered); plain != help {
+		t.Fatalf("plain renderStatusHelp() = %q, want %q", plain, help)
+	}
+}
+
 func TestTreeEditFileRequiresEditor(t *testing.T) {
 	t.Setenv("EDITOR", "")
 	service := testService(t, createWorktree(t), config.Config{})
@@ -1010,8 +1119,8 @@ func TestBranchSelectorHighlightsSelectedRowWithBackground(t *testing.T) {
 	if width := lipgloss.Width(plainText(selectedLine)); width < 70 {
 		t.Fatalf("selected line width = %d in %q, want row highlight to span list width", width, plainText(selectedLine))
 	}
-	if got := modalBranchSelectedLineStyle(70).GetBackground(); got != lipgloss.Color("24") {
-		t.Fatalf("selected background = %#v, want color 24", got)
+	if got := modalBranchSelectedLineStyle(70).GetBackground(); got != lipgloss.Color("#313244") {
+		t.Fatalf("selected background = %#v, want Catppuccin Mocha surface0", got)
 	}
 }
 

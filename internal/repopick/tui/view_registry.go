@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // registryLinesView 生成左栏 registry 面板正文。
@@ -30,7 +32,7 @@ func (m model) registryLinesView() string {
 			cursor = m.selectionCursor()
 		}
 		rows = append(rows, []string{
-			fmt.Sprintf("%s %s", cursor, repositoryLabel(repository)),
+			fmt.Sprintf("%s %s", cursor, registryListName(repository.Name)),
 			shortRepositoryUpdatedAt(repository.LastUpdatedAt),
 		})
 	}
@@ -39,7 +41,22 @@ func (m model) registryLinesView() string {
 	if selected < 0 || selected >= len(rows) {
 		selected = -1
 	}
-	return renderSelectableTable(rows, selected, contentWidth, nil)
+	return renderTableRows(rows, contentWidth, func(row int, col int) lipgloss.Style {
+		isSelected := row == selected
+		if col == 1 {
+			return registryUpdatedAtStyle(isSelected)
+		}
+		return registryNameStyle(isSelected)
+	})
+}
+
+// registryListName 返回左侧 registry 列表中的名称展示，不包含分支。
+func registryListName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "-"
+	}
+	return name
 }
 
 // shortRepositoryUpdatedAt 将 RFC3339 更新时间压缩成适合左栏展示的短文本。

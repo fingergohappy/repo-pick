@@ -39,7 +39,7 @@ func (m model) focusHelpLine() string {
 	if m.focus == focusRegistry {
 		return keyHelp("j/k", "move", "l", "open", "a", "add", "e", "edit", "r", "reload", "d", "delete", "u", "update", "Tab", "tree", "?", "help")
 	}
-	return keyHelp("j/k", "move", "l", "expand", "C", "collapse", "h", "parent", "o", "root", "e", "editor", "i", "download", "I", "target", "/", "search", "Tab", "registry", "?", "help")
+	return keyHelp("j/k", "move", "l", "expand", "C", "collapse", "h", "parent", "H", "registry", "o", "root", "e", "editor", "i", "download", "I", "target", "/", "search", "Tab", "registry", "?", "help")
 }
 
 // prompt 返回当前输入模式的提示文本。
@@ -62,7 +62,7 @@ func (m model) prompt() string {
 func keyHelp(parts ...string) string {
 	chunks := make([]string, 0, len(parts)/2)
 	for i := 0; i+1 < len(parts); i += 2 {
-		chunks = append(chunks, fmt.Sprintf("[%s]%s", parts[i], parts[i+1]))
+		chunks = append(chunks, fmt.Sprintf("[%s] %s", parts[i], parts[i+1]))
 	}
 	return strings.Join(chunks, " ")
 }
@@ -95,6 +95,49 @@ func renderStatusBlocks(status string, help string, width int) string {
 	helpWidth := lipgloss.Width(help)
 	statusWidth := max(1, width-helpWidth)
 	left := statusTextStyle.Width(statusWidth).Render(truncateVisible(status, statusWidth))
-	right := statusHelpStyle.Render(help)
+	right := renderStatusHelp(help)
 	return statusLineContainerStyle(width).Render(lipgloss.JoinHorizontal(lipgloss.Top, left, right))
+}
+
+// renderStatusHelp 将快捷键和动作说明分别上色。
+func renderStatusHelp(help string) string {
+	var builder strings.Builder
+	for i := 0; i < len(help); {
+		switch help[i] {
+		case ' ':
+			builder.WriteByte(' ')
+			i++
+		case '|':
+			builder.WriteString(statusHelpStyle.Render("|"))
+			i++
+		case '[':
+			closeIndex := strings.IndexByte(help[i:], ']')
+			if closeIndex < 0 {
+				builder.WriteString(statusHelpDescStyle.Render(help[i:]))
+				i = len(help)
+				continue
+			}
+			keyEnd := i + closeIndex + 1
+			builder.WriteString(statusHelpKeyStyle.Render(help[i:keyEnd]))
+			i = keyEnd
+			if i < len(help) && help[i] == ' ' {
+				builder.WriteByte(' ')
+				i++
+			}
+			descStart := i
+			for i < len(help) && help[i] != ' ' {
+				i++
+			}
+			if i > descStart {
+				builder.WriteString(statusHelpDescStyle.Render(help[descStart:i]))
+			}
+		default:
+			start := i
+			for i < len(help) && help[i] != ' ' && help[i] != '[' && help[i] != '|' {
+				i++
+			}
+			builder.WriteString(statusHelpDescStyle.Render(help[start:i]))
+		}
+	}
+	return builder.String()
 }

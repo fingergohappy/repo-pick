@@ -141,6 +141,10 @@ func (m model) startRegistrySelectionPreview() (model, tea.Cmd) {
 // handleTreeKey 处理目录树焦点下的快捷键。
 func (m model) handleTreeKey(msg tea.KeyMsg) (model, tea.Cmd) {
 	switch msg.String() {
+	case "H":
+		m.focus = focusRegistry
+		m.status = "已切到 registry"
+		return m, nil
 	case "h", "left":
 		return m.openParentDirectory()
 	case "j", "down":

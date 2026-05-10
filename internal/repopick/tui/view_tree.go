@@ -57,7 +57,7 @@ func (m model) treeContextLinesView() string {
 		if col == 0 {
 			return treeMetaLabelStyle
 		}
-		return treeMetaStyle
+		return treeMetaValueStyle(rows[row][0])
 	})
 }
 
@@ -120,11 +120,16 @@ func (m model) registrySelectionPreviewLines() []string {
 		loadingTextLine("已选择 registry", contentWidth, treeLoadingTitleStyle),
 		loadingTextLine(m.registrySelectionStatus(), contentWidth, treeLoadingTextStyle),
 		"",
-		treeMetaStyle.Render("url: " + strings.TrimSpace(repo.URL)),
-		treeMetaStyle.Render("branch: " + branch),
+		treePreviewMetaLine("url", strings.TrimSpace(repo.URL)),
+		treePreviewMetaLine("branch", branch),
 		"",
 		centerLine(treeLoadingHintStyle.Render("按 l 打开该 repository"), contentWidth),
 	}
+}
+
+// treePreviewMetaLine 渲染 registry 选择预览里的单行元信息。
+func treePreviewMetaLine(key string, value string) string {
+	return treeMetaLabelStyle.Render(key+": ") + treeMetaValueStyle(key).Render(value)
 }
 
 // treeRowsView 生成树内容行。

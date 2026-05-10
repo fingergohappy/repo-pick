@@ -23,7 +23,7 @@ func (m model) addRepositoryModalView() string {
 	}
 
 	lines := []string{
-		centerLine(modalTitleStyle.Render(title), innerWidth),
+		centerLine(modalRegistryTitleStyle(m.editingRepositoryActive).Render(title), innerWidth),
 		modalDescStyle.Render("同一 URL 可添加多个分支；URL 和 branch 组合不能重复"),
 		"",
 	}
@@ -164,10 +164,7 @@ func renderModalFormRows(rows [][2]string, activeRow int, width int) string {
 	lines := make([]string, 0, len(rows))
 	for rowIndex, row := range rows {
 		label := modalFieldLabelStyle.Width(labelWidth).Render(row[0])
-		valueStyle := modalFieldValueStyle
-		if rowIndex == activeRow {
-			valueStyle = selectedLineStyle
-		}
+		valueStyle := modalRegistryFieldValueStyle(row[0], rowIndex == activeRow)
 		value := valueStyle.Width(valueWidth).Render(truncateVisible(firstLine(row[1]), valueWidth))
 		lines = append(lines, label+" : "+value)
 	}
@@ -201,7 +198,7 @@ func renderBranchChoiceRows(rows []string, selected int, width int) string {
 			lines = append(lines, modalBranchSelectedLineStyle(width).Render(line))
 			continue
 		}
-		lines = append(lines, modalFieldValueStyle.Width(width).Render(line))
+		lines = append(lines, modalBranchChoiceStyle(false).Width(width).Render(line))
 	}
 	return strings.Join(lines, "\n")
 }
