@@ -2,20 +2,38 @@
 
 English | [简体中文](README.md)
 
-`repo-pick` is a TUI-only tool for downloading files and directories from remote Git repositories. It shallow-clones repositories into a local cache, lets you browse the work tree in the terminal, and downloads the selected file, directory, or entire repository into a local directory.
+`repo-pick` is a TUI-only tool for downloading files and directories from remote Git repositories. It shallow-clones repositories into a local cache, lets you browse the repository tree in the terminal, and copies the selected file, directory, or entire repository into a local directory.
 
-## Demo
+## Features
 
-<!-- TODO: Add demo video or GIF -->
+- Two-pane TUI: manage registries on the left and browse the repository tree on the right.
+- Register multiple branches from the same remote repository; add/edit dialogs can fetch, search, and select remote branches.
+- Reuse the local cache by default; manual updates delete the old cache and run a fresh shallow clone.
+- Download files, directories, or the repository root, with confirmation before overwriting an existing target.
+- Open cached files with `EDITOR`.
+- Show progress for open, update, and download operations.
 
-## Quick Start
+## Requirements
 
-Install:
+- `git`
+- Go 1.25+ for development or source builds
+
+## Installation
+
+Homebrew:
 
 ```bash
 brew tap fingergohappy/tap
 brew install repo-pick
 ```
+
+From source:
+
+```bash
+go install github.com/finger/repo-pick/cmd/repo-pick@latest
+```
+
+## Quick Start
 
 Start:
 
@@ -27,18 +45,21 @@ First run:
 
 ```text
 a       Add registry
-l       Open current registry
-j/k     Move in the work tree
+Tab     Switch registry / repository tree focus; opens the current registry when no repository is open
+l/Enter Open current registry, or expand a directory
+j/k     Move cursor
 i       Download current item to the startup directory
+?       Show keybinding help
 ```
 
 ## Core Workflow
 
 1. Press `a` in the left `Registry` pane to add a remote Git repository.
-2. Press `l` to open the current registry. The first open shallow-clones it into the local cache; later opens reuse the cache.
-3. Browse directories, search paths, or expand directories in the right `Repository Tree` pane.
-4. Select a file, directory, or the root `/`, then press `i` to download it to the startup directory, or `I` to enter a target directory.
-5. Select a file and press `e` to open the cached file with `EDITOR`.
+2. Enter name and URL, then move to Branch. You can use the remote default branch or search and select a specific branch.
+3. Press `l`, `Enter`, or `Tab` to open the current registry. The first open shallow-clones it into the local cache; later opens reuse the cache.
+4. Browse directories, expand directories, or search paths in the right `Repository Tree` pane.
+5. Select a file, directory, or the root `/`, then press `i` to download it to the startup directory, or `I` to enter a target directory.
+6. Select a file and press `e` to open the cached file with `EDITOR`.
 
 In Repository Tree, `/` is the current root. Pressing `i` or `I` on the repository root `/` downloads the entire repository, using the registry name as the target directory name.
 
@@ -51,24 +72,36 @@ repo-pick asks for confirmation before risky actions such as deleting a registry
 Global:
 
 ```text
-ctrl-w h Switch to registry
-ctrl-w l Switch to repository tree; opens the current registry when no repository is open
-/       Search paths in the current repository
-Esc     Close search, confirmation, or error
-?       Show/hide help
-q       Quit
+Tab / Shift+Tab  Switch registry / repository tree focus; opens the current registry when no repository is open
+ctrl-w h         Switch to registry
+ctrl-w l         Switch to repository tree; opens the current registry when no repository is open
+/                Search paths in the current repository
+Esc              Close search, confirmation, or error
+?                Show/hide help
+q / ctrl-c       Quit
 ```
 
 Registry:
 
 ```text
-j/k     Move
-l       Open current repository
-a       Add registry; enter name/url in the dialog and optionally choose a remote branch
-e       Edit current registry; update name/url/branch in the dialog
-r       Reload registry list; only rereads config and does not update repository contents
-d       Delete registry and its cache
-u       Update current repository cache; delete old cache and download repository contents again
+j/k or ↑/↓       Move
+l/Enter or →     Open current repository
+a                Add registry; enter name/url and optionally choose a remote branch
+e                Edit current registry; update name/url/branch
+r                Reload registry list; only rereads config and does not update repository contents
+d                Delete registry and its cache
+u                Update current repository cache; delete old cache and download repository contents again
+```
+
+Add/Edit Registry dialog:
+
+```text
+Tab / Shift+Tab  Move focus between Name, URL, and Branch
+↑/↓              Move in the branch list
+Text input       Search branches
+ctrl-u           Clear branch search
+Enter            Confirm the current field or submit the registry
+Esc              Cancel
 ```
 
 Deleting a registry opens a confirmation dialog. Press `y` to confirm, or `n`/`Esc` to cancel.
@@ -76,14 +109,15 @@ Deleting a registry opens a confirmation dialog. Press `y` to confirm, or `n`/`E
 Repository Tree:
 
 ```text
-h       Return to parent root
-j/k     Move
-l       Expand or collapse selected directory
-C       Collapse all expanded directories
-o       Enter directory and make it the new root; files are located in their parent directory
-e       Open current file with EDITOR
-i       Download current item to the startup directory
-I       Enter a target directory and download current item there
+H                Switch back to registry
+h or ←           Return to parent root
+j/k or ↑/↓       Move
+l/Enter or →     Expand or collapse selected directory
+C                Collapse all expanded directories
+o                Enter directory and make it the new root; files are located in their parent directory
+e                Open current file with EDITOR
+i                Download current item to the startup directory
+I                Enter a target directory and download current item there
 ```
 
 ## Configuration
@@ -123,7 +157,7 @@ Repository cache path:
 `Ensure` behavior:
 
 - Cache exists: read the local working tree directly without network access.
-- Cache does not exist: run `git clone --depth 1 --single-branch`; if `branch` is configured, also pass `--branch <branch>`.
+- Cache does not exist: run `git clone --progress --depth 1 --single-branch`; if `branch` is configured, also pass `--branch <branch>`.
 - On first successful cache creation, update `last_updated_at` in the configuration.
 
 `Update` behavior:
@@ -131,7 +165,9 @@ Repository cache path:
 - Delete the old cache.
 - Run a fresh shallow clone.
 - On success, update `last_updated_at` in the configuration.
-- If the new download fails, the old cache is not restored; the repository cannot be browsed in that run.
+- If the new download fails, the old cache is not restored; the repository cannot be browsed in that run. Run update again or reopen the repository to retry.
+
+When editing a registry, changing URL or branch deletes the cache for the old source. Renaming a registry does not delete the cache.
 
 ## Development
 
