@@ -39,7 +39,7 @@ func (m model) focusHelpLine() string {
 	if m.focus == focusRegistry {
 		return keyHelp("j/k", "move", "l", "open", "a", "add", "e", "edit", "r", "reload", "d", "delete", "u", "update", "Tab", "tree", "?", "help")
 	}
-	return keyHelp("j/k", "move", "l", "expand", "h", "parent", "o", "root", "e", "editor", "i", "download", "I", "target", "/", "search", "Tab", "registry", "?", "help")
+	return keyHelp("j/k", "move", "l", "expand", "C", "collapse", "h", "parent", "o", "root", "e", "editor", "i", "download", "I", "target", "/", "search", "Tab", "registry", "?", "help")
 }
 
 // prompt 返回当前输入模式的提示文本。

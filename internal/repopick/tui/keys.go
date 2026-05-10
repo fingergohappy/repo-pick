@@ -151,6 +151,8 @@ func (m model) handleTreeKey(msg tea.KeyMsg) (model, tea.Cmd) {
 		return m, nil
 	case "l", "right", "enter":
 		return m.toggleSelectedTreeEntry()
+	case "C":
+		return m.collapseAllTreeEntries()
 	case "o":
 		return m.openSelectedEntry()
 	case "e":
@@ -636,6 +638,32 @@ func (m model) toggleSelectedTreeEntry() (model, tea.Cmd) {
 	}
 	m.status = fmt.Sprintf("正在展开 %s", displayPath(entry.Path))
 	return m, m.loadTreeChildrenCommand(m.openedRepo, entry.Path)
+}
+
+// collapseAllTreeEntries 收起右侧树中所有已展开的目录。
+func (m model) collapseAllTreeEntries() (model, tea.Cmd) {
+	if !m.repoOpened {
+		m.status = "请先打开 repository"
+		return m, nil
+	}
+
+	hasExpanded := false
+	for _, expanded := range m.expandedPaths {
+		if expanded {
+			hasExpanded = true
+			break
+		}
+	}
+	if !hasExpanded {
+		m.expandedPaths = map[string]bool{}
+		m.status = "没有已展开目录"
+		return m, nil
+	}
+
+	m.expandedPaths = map[string]bool{}
+	m.selectedEntry = clampCursor(m.selectedEntry, len(m.visibleEntries()))
+	m.status = "已收起所有目录"
+	return m, nil
 }
 
 // downloadSelectedEntry 下载右栏当前选中的文件或目录。

@@ -135,6 +135,33 @@ func TestDeleteRepositoryShowsConfirmModalBeforeRemoving(t *testing.T) {
 	}
 }
 
+func TestHelpDialogIsCenteredInView(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.width = 100
+	m.height = 30
+	m.showHelp = true
+
+	lines := plainBlock(m.View())
+	modalTop := -1
+	for i, line := range lines {
+		if strings.Contains(line, "╭") {
+			modalTop = i
+			break
+		}
+	}
+
+	if modalTop <= 0 {
+		t.Fatalf("help modal top = %d in %#v, want vertical centering", modalTop, lines)
+	}
+	modalLine := lines[modalTop]
+	if !strings.HasPrefix(modalLine, " ") {
+		t.Fatalf("help modal line = %q, want horizontal centering", modalLine)
+	}
+	if width := lipgloss.Width(modalLine); width != m.width {
+		t.Fatalf("help modal line width = %d, want full view width %d", width, m.width)
+	}
+}
+
 func TestCtrlWLFocusesRepositoryTreeAndOpensSelectedRepository(t *testing.T) {
 	worktree := createWorktree(t)
 	service := testService(t, worktree, config.Config{
@@ -528,6 +555,35 @@ func TestTreeToggleOpensDirectoryWithL(t *testing.T) {
 	}
 }
 
+func TestTreeCollapseAllWithC(t *testing.T) {
+	worktree := createWorktree(t)
+	service := testService(t, worktree, config.Config{})
+	m := openModelWithWorktree(t, service)
+
+	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	m = next.(model)
+	m = updateModel(t, m, cmd())
+
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("C")})
+	m = next.(model)
+	if cmd != nil {
+		t.Fatalf("C command = %v, want nil", cmd)
+	}
+	if len(m.expandedPaths) != 0 {
+		t.Fatalf("expandedPaths = %#v, want empty after collapse all", m.expandedPaths)
+	}
+	entries := m.visibleEntries()
+	for _, entry := range entries {
+		if entry.Path == "docs/guide.md" {
+			t.Fatalf("visibleEntries() = %#v, want expanded children hidden", entries)
+		}
+	}
+	if m.status != "已收起所有目录" {
+		t.Fatalf("status = %q, want collapse all message", m.status)
+	}
+}
+
 func TestTreeRootIsSelectableAndDownloadsRepository(t *testing.T) {
 	worktree := createWorktree(t)
 	sessionCWD := t.TempDir()
@@ -902,6 +958,63 @@ func TestBranchSelectorKeepsCursorNextToBranchLabel(t *testing.T) {
 	}
 }
 
+func TestRegistryModalBranchFocusUsesTableLikeLayout(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.mode = modeAddBranch
+	m.pendingName = "aa"
+	m.pendingURL = "git@github.com:anthropics/skills.git"
+	m.pendingDefaultBranch = "main"
+	m.pendingBranches = []string{"andibrae/create-top-level-namespace", "klazuka/add-3p-notices"}
+
+	lines := plainBlock(m.addRepositoryModalView())
+	nameLine := lineContaining(lines, "Name")
+	urlLine := lineContaining(lines, "git@github.com:anthropics/skills.git")
+	branchLine := lineContaining(lines, "Branch")
+	statusLine := lineContaining(lines, "已获取 2 个分支")
+	footerLine := lineContaining(lines, "[Tab/Shift+Tab]")
+
+	if nameLine == "" || urlLine == "" || branchLine == "" {
+		t.Fatalf("modal lines = %#v, want Name/URL/Branch form rows", lines)
+	}
+	nameColon := strings.Index(nameLine, ":")
+	urlColon := strings.Index(urlLine, ":")
+	branchColon := strings.Index(branchLine, ":")
+	if nameColon < 0 || nameColon != urlColon || nameColon != branchColon {
+		t.Fatalf("colon columns name/url/branch = %d/%d/%d in %#v, want aligned", nameColon, urlColon, branchColon, lines)
+	}
+	if statusLine == "" || !strings.Contains(statusLine, "已获取 2 个分支") || !strings.Contains(statusLine, "默认分支: main") || !strings.Contains(statusLine, "[ 1/2 ]") {
+		t.Fatalf("status line = %q in %#v, want fetched branch count, default branch, and matching scroll total", statusLine, lines)
+	}
+	branchIndex := lineIndex(lines, branchLine)
+	statusIndex := lineIndex(lines, statusLine)
+	if branchIndex < 0 || statusIndex <= branchIndex+1 || !strings.Contains(lines[statusIndex-1], "─") {
+		t.Fatalf("modal lines = %#v, want horizontal divider between form and branch list", lines)
+	}
+	if footerLine == "" || !strings.Contains(footerLine, " | ") || !strings.Contains(footerLine, "[Enter] 确认") {
+		t.Fatalf("footer line = %q, want bracketed key groups separated by pipes", footerLine)
+	}
+}
+
+func TestBranchSelectorHighlightsSelectedRowWithBackground(t *testing.T) {
+	m := newModel(context.Background(), app.Service{}, t.TempDir())
+	m.mode = modeAddBranch
+	m.pendingDefaultBranch = "main"
+	m.pendingBranches = []string{"dev", "main"}
+	m.selectedBranch = 1
+
+	lines := splitRenderedLines(m.branchSelectView())
+	selectedLine := lineContaining(lines, "dev")
+	if selectedLine == "" {
+		t.Fatalf("branchSelectView() = %#v, want selected dev row", plainLines(lines))
+	}
+	if width := lipgloss.Width(plainText(selectedLine)); width < 70 {
+		t.Fatalf("selected line width = %d in %q, want row highlight to span list width", width, plainText(selectedLine))
+	}
+	if got := modalBranchSelectedLineStyle(70).GetBackground(); got != lipgloss.Color("24") {
+		t.Fatalf("selected background = %#v, want color 24", got)
+	}
+}
+
 func TestEditRepositoryShowsPrefilledModalAndPersists(t *testing.T) {
 	store := &memoryStore{cfg: config.Config{
 		Repositories: []config.Repository{{Name: "official", URL: "https://github.com/org/tools", Branch: "main"}},
@@ -968,7 +1081,7 @@ func TestRegistryModalInactiveURLAlignsAfterNameCursor(t *testing.T) {
 	m.pendingURL = "git@github.com:anthropics/skills.git"
 
 	lines := plainBlock(m.addRepositoryModalView())
-	nameLine := lineContaining(lines, "name")
+	nameLine := lineContaining(lines, "Name")
 	urlLine := lineContaining(lines, m.pendingURL)
 	cursorCol := strings.Index(nameLine, ">")
 	urlCol := strings.Index(urlLine, m.pendingURL)
@@ -1048,6 +1161,15 @@ func lineContaining(lines []string, value string) string {
 		}
 	}
 	return ""
+}
+
+func lineIndex(lines []string, value string) int {
+	for i, line := range lines {
+		if line == value {
+			return i
+		}
+	}
+	return -1
 }
 
 func runBranchCommand(t *testing.T, m model, cmd tea.Cmd) model {

@@ -7,6 +7,12 @@ var selectedLineStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("255")).
 	Bold(true)
 
+// modalBranchSelectedBaseStyle 是分支列表选中项的整行高亮基础样式。
+var modalBranchSelectedBaseStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("255")).
+	Background(lipgloss.Color("24")).
+	Bold(true)
+
 // paneTitleFocusedStyle 是聚焦栏目标题样式。
 var paneTitleFocusedStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("39")).
@@ -199,4 +205,9 @@ func modalTableHeaderStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color("75")).
 		Bold(true)
+}
+
+// modalBranchSelectedLineStyle 返回分支列表选中项的定宽高亮样式。
+func modalBranchSelectedLineStyle(width int) lipgloss.Style {
+	return modalBranchSelectedBaseStyle.Width(width)
 }

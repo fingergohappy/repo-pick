@@ -13,9 +13,6 @@ const (
 
 // View 渲染双栏主界面和底部状态。
 func (m model) View() string {
-	if m.showHelp {
-		return m.helpView()
-	}
 	if m.terminalTooSmall() {
 		return m.narrowView()
 	}
@@ -32,12 +29,12 @@ func (m model) View() string {
 		focused: m.focus == focusTree,
 	})
 	main := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
-	if m.isAddMode() {
-		bodyHeight := max(8, m.height-3)
+	bodyHeight := max(8, m.height-3)
+	if m.showHelp {
+		main = placeOverlay(main, m.helpView(), m.width, bodyHeight)
+	} else if m.isAddMode() {
 		main = placeOverlay(main, m.addRepositoryModalView(), m.width, bodyHeight)
-	}
-	if m.mode == modeConfirmDelete {
-		bodyHeight := max(8, m.height-3)
+	} else if m.mode == modeConfirmDelete {
 		main = placeOverlay(main, m.deleteRepositoryConfirmModalView(), m.width, bodyHeight)
 	}
 

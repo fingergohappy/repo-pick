@@ -15,7 +15,7 @@ func (m model) isAddMode() bool {
 
 // addRepositoryModalView 渲染 registry 新增或编辑弹框。
 func (m model) addRepositoryModalView() string {
-	modalWidth := max(32, min(76, m.width-4))
+	modalWidth := max(32, min(84, m.width-4))
 	innerWidth := max(24, modalWidth-6)
 	title := "添加 Registry"
 	if m.editingRepositoryActive {
@@ -25,7 +25,7 @@ func (m model) addRepositoryModalView() string {
 	lines := []string{
 		centerLine(modalTitleStyle.Render(title), innerWidth),
 		modalDescStyle.Render("同一 URL 可添加多个分支；URL 和 branch 组合不能重复"),
-		modalDividerLine(innerWidth),
+		"",
 	}
 
 	name := m.pendingName
@@ -39,6 +39,10 @@ func (m model) addRepositoryModalView() string {
 	branch := m.pendingBranch
 	if strings.TrimSpace(branch) == "" {
 		branch = "使用远端默认分支"
+	}
+	branchValue := branch
+	if m.mode == modeAddBranch {
+		branchValue = m.input.View()
 	}
 	activeRow := -1
 	if m.mode == modeAddName {
@@ -58,34 +62,17 @@ func (m model) addRepositoryModalView() string {
 		name = "  " + name
 	}
 	fieldRows := [][2]string{
-		{"name", name},
-		{"url", repoURL},
+		{"Name", name},
+		{"URL", repoURL},
+		{"Branch", branchValue},
 	}
-	fieldResolver := func(row int, col int) lipgloss.Style {
-		if col == 0 {
-			return modalFieldLabelStyle
-		}
-		if row == activeRow {
-			return selectedLineStyle
-		}
-		return modalFieldValueStyle
-	}
-	lines = append(lines, renderFixedKeyValueTable(fieldRows, innerWidth, fieldResolver))
+	lines = append(lines, renderModalFormRows(fieldRows, activeRow, innerWidth))
 
 	if m.mode == modeAddBranch {
+		lines = append(lines, modalDividerLine(innerWidth))
 		lines = append(lines, m.branchSelectView())
-	} else {
-		lines = append(lines, renderFixedKeyValueTable([][2]string{{"branch", branch}}, innerWidth, func(row int, col int) lipgloss.Style {
-			if col == 0 {
-				return modalFieldLabelStyle
-			}
-			if activeRow == 2 {
-				return selectedLineStyle
-			}
-			return modalFieldValueStyle
-		}))
 	}
-	lines = append(lines, modalDividerLine(innerWidth), modalHintStyle.Render("Tab/Shift+Tab 切焦点   输入搜索分支   Enter 确认   Esc 取消"))
+	lines = append(lines, modalDividerLine(innerWidth), modalHintStyle.Render("[Tab/Shift+Tab] 切焦点  |  [输入] 搜索分支  |  [Enter] 确认  |  [Esc] 取消"))
 
 	return renderModal(strings.Join(lines, "\n"), modalWidth)
 }
@@ -125,73 +112,98 @@ func (m model) deleteRepositoryConfirmModalView() string {
 
 // modalDividerLine 渲染新增弹框中的横向分隔线。
 func modalDividerLine(width int) string {
-	return modalDividerStyle.Render(strings.Repeat("-", max(12, width)))
+	return modalDividerStyle.Render(strings.Repeat("─", max(12, width)))
 }
 
 // branchSelectView 生成 registry 表单里的分支选择块。
 func (m model) branchSelectView() string {
 	if m.branchLoading {
-		return renderFixedKeyValueTable([][2]string{{"branch", m.branchLoadingStatus() + "..."}}, max(24, min(72, m.width-10)), func(row int, col int) lipgloss.Style {
-			if col == 0 {
-				return modalFieldLabelStyle
-			}
-			return modalDescStyle
-		})
+		return modalDescStyle.Render(m.branchLoadingStatus() + "...")
 	}
 
-	query := m.branchQuery
-	if m.mode == modeAddBranch {
-		query = m.input.View()
-	}
-	width := max(24, min(72, m.width-10))
+	width := max(24, min(78, m.width-10))
 	parts := []string{
-		renderFixedKeyValueTable([][2]string{
-			{"branch", ""},
-			{"search", emptyPlaceholder(query, "-")},
-		}, width, func(row int, col int) lipgloss.Style {
-			if col == 0 {
-				return modalFieldLabelStyle
-			}
-			return modalFieldValueStyle
-		}),
+		m.branchListStatusLine(width),
 	}
 	if m.branchErr != nil {
-		message := "  获取失败，Enter 使用远端默认分支"
+		message := "获取失败，Enter 使用远端默认分支"
 		if m.editingRepositoryActive && strings.TrimSpace(m.pendingBranch) != "" {
-			message = "  获取失败，Enter 保留当前分支"
+			message = "获取失败，Enter 保留当前分支"
 		}
 		parts = append(parts, modalDescStyle.Render(message))
 		return strings.Join(parts, "\n")
 	}
-	parts = append(parts, modalDescStyle.Render(fmt.Sprintf("  已获取 %d 个分支", len(m.pendingBranches))))
 
 	choices := m.branchChoiceLabels()
 	if strings.TrimSpace(m.branchQuery) != "" && len(m.filteredBranchNames()) == 0 {
-		parts = append(parts, modalDescStyle.Render("  无匹配分支"))
+		parts = append(parts, modalDescStyle.Render("无匹配分支"))
 	}
 	start, end := m.branchWindow(len(choices))
-	rows := make([][]string, 0, end-start)
+	rows := make([]string, 0, end-start)
 	for i := start; i < end; i++ {
 		cursor := " "
 		if i == m.selectedBranch {
 			cursor = m.selectionCursor()
 		}
-		rows = append(rows, []string{fmt.Sprintf("%s %s", cursor, choices[i])})
+		rows = append(rows, fmt.Sprintf("%s %s", cursor, choices[i]))
 	}
 	if start > 0 {
-		parts = append(parts, modalDescStyle.Render("..."))
+		parts = append(parts, modalDescStyle.Render("↑"))
 	}
-	selected := m.selectedBranch - start
-	if selected < 0 || selected >= len(rows) {
-		selected = -1
-	}
-	parts = append(parts, renderSelectableTable(rows, selected, width, func(row int, col int) lipgloss.Style {
-		return modalFieldValueStyle
-	}))
+	parts = append(parts, renderBranchChoiceRows(rows, m.selectedBranch-start, width))
 	if end < len(choices) {
-		parts = append(parts, modalDescStyle.Render("..."))
+		parts = append(parts, modalDescStyle.Render("↓"))
 	}
 	return strings.Join(parts, "\n")
+}
+
+// renderModalFormRows 渲染固定冒号列的 registry 表单字段。
+func renderModalFormRows(rows [][2]string, activeRow int, width int) string {
+	labelWidth := lipgloss.Width("Branch")
+	valueWidth := max(1, width-labelWidth-3)
+	lines := make([]string, 0, len(rows))
+	for rowIndex, row := range rows {
+		label := modalFieldLabelStyle.Width(labelWidth).Render(row[0])
+		valueStyle := modalFieldValueStyle
+		if rowIndex == activeRow {
+			valueStyle = selectedLineStyle
+		}
+		value := valueStyle.Width(valueWidth).Render(truncateVisible(firstLine(row[1]), valueWidth))
+		lines = append(lines, label+" : "+value)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// branchListStatusLine 渲染分支列表顶部的状态和滚动位置。
+func (m model) branchListStatusLine(width int) string {
+	defaultBranch := strings.TrimSpace(m.pendingDefaultBranch)
+	left := fmt.Sprintf("已获取 %d 个分支", len(m.pendingBranches))
+	if defaultBranch != "" {
+		left += fmt.Sprintf(" | 默认分支: %s", defaultBranch)
+	}
+
+	total := max(1, len(m.pendingBranches))
+	current := clampCursor(m.selectedBranch, total) + 1
+	right := fmt.Sprintf("[ %d/%d ]", current, total)
+	if lipgloss.Width(left)+1+lipgloss.Width(right) > width {
+		return modalDescStyle.Render(truncateVisible(left+" "+right, width))
+	}
+	gap := strings.Repeat(" ", max(1, width-lipgloss.Width(left)-lipgloss.Width(right)))
+	return modalDescStyle.Render(left + gap + right)
+}
+
+// renderBranchChoiceRows 渲染分支列表并给当前行加整行底色。
+func renderBranchChoiceRows(rows []string, selected int, width int) string {
+	lines := make([]string, 0, len(rows))
+	for i, row := range rows {
+		line := truncateVisible(firstLine(row), width)
+		if i == selected {
+			lines = append(lines, modalBranchSelectedLineStyle(width).Render(line))
+			continue
+		}
+		lines = append(lines, modalFieldValueStyle.Width(width).Render(line))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // branchChoiceLabels 返回分支选择列表的展示文本。
@@ -221,15 +233,6 @@ func (m model) branchWindow(total int) (int, int) {
 	return start, start + visible
 }
 
-// emptyPlaceholder 在展示字段为空时返回占位文本。
-func emptyPlaceholder(value string, placeholder string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return placeholder
-	}
-	return value
-}
-
 // helpView 渲染快捷键帮助。
 func (m model) helpView() string {
 	width := max(36, min(84, m.width-4))
@@ -254,6 +257,7 @@ func (m model) helpView() string {
 		}}}, innerWidth),
 		helperSectionTable([]helpSection{{name: "Repository Tree", rows: [][2]string{
 			{"h 或 ←", "返回上级 root"},
+			{"C", "收起所有已展开目录"},
 			{"o", "进入目录作为 root"},
 			{"e", "用 EDITOR 打开当前文件"},
 			{"i", "下载到启动目录"},
@@ -263,10 +267,11 @@ func (m model) helpView() string {
 		}}}, innerWidth),
 	}
 
-	if maxLines := max(1, m.height-4); len(lines) > maxLines {
-		lines = append(lines[:maxLines-1], modalDescStyle.Render("..."))
+	contentLines := splitRenderedLines(strings.Join(lines, "\n"))
+	if maxLines := max(1, m.paneHeight()-6); len(contentLines) > maxLines {
+		contentLines = append(contentLines[:maxLines-1], modalDescStyle.Render("..."))
 	}
-	content := strings.Join(lines, "\n")
+	content := strings.Join(contentLines, "\n")
 	return renderModal(content, width)
 }
 

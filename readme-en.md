@@ -79,6 +79,7 @@ Repository Tree:
 h       Return to parent root
 j/k     Move
 l       Expand or collapse selected directory
+C       Collapse all expanded directories
 o       Enter directory and make it the new root; files are located in their parent directory
 e       Open current file with EDITOR
 i       Download current item to the startup directory
