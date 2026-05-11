@@ -322,8 +322,8 @@ func (s Service) runProgress(ctx context.Context, dir string, args []string, pro
 		recordReadErr(scanProgressOutput(stdout, appendOutput, progress))
 	}()
 
-	err = cmd.Wait()
 	wg.Wait()
+	err = cmd.Wait()
 	if err != nil {
 		outputMu.Lock()
 		text := output.String()
