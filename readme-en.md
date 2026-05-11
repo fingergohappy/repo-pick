@@ -4,6 +4,10 @@ English | [简体中文](README.md)
 
 `repo-pick` is a TUI-only tool for downloading files and directories from remote Git repositories. It shallow-clones repositories into a local cache, lets you browse the repository tree in the terminal, and copies the selected file, directory, or entire repository into a local directory.
 
+## Demo
+
+[![repo-pick demo](https://img.youtube.com/vi/ClDb8ylknc0/hqdefault.jpg)](https://youtu.be/ClDb8ylknc0)
+
 ## Features
 
 - Two-pane TUI: manage registries on the left and browse the repository tree on the right.

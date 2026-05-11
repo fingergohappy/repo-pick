@@ -4,6 +4,10 @@
 
 `repo-pick` 是一个 TUI-only 的远程 Git 仓库文件/目录下载工具。它把远程仓库 shallow clone 到本地 cache，让你在终端中浏览目录树，并把选中的文件、目录或整个仓库复制到本地目录。
 
+## Demo
+
+[![repo-pick demo](https://img.youtube.com/vi/ClDb8ylknc0/hqdefault.jpg)](https://youtu.be/ClDb8ylknc0)
+
 ## Features
 
 - 双栏 TUI：左侧管理 registry，右侧浏览 repository tree。
