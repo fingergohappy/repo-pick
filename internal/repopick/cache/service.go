@@ -129,15 +129,7 @@ func (s Service) ListRemoteBranches(ctx context.Context, repoURL string) (Remote
 		return RemoteBranches{}, errors.New("repo URL is required")
 	}
 
-	defaultBranch, err := s.defaultBranch(ctx, repoURL)
-	if err != nil {
-		return RemoteBranches{}, err
-	}
-	branches, err := s.remoteBranches(ctx, repoURL)
-	if err != nil {
-		return RemoteBranches{}, err
-	}
-	return RemoteBranches{Default: defaultBranch, Branches: branches}, nil
+	return s.remoteBranches(ctx, repoURL)
 }
 
 // clone 将远程仓库 shallow clone 到指定 cache 目录。
@@ -198,33 +190,21 @@ func hashRepository(repo config.Repository) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// defaultBranch 查询远端 HEAD 指向的默认分支名称。
-func (s Service) defaultBranch(ctx context.Context, repoURL string) (string, error) {
-	out, err := s.output(ctx, "", "ls-remote", "--symref", repoURL, "HEAD")
+// remoteBranches 一次性查询远端默认分支和 refs/heads 下的全部分支名称。
+func (s Service) remoteBranches(ctx context.Context, repoURL string) (RemoteBranches, error) {
+	out, err := s.output(ctx, "", "ls-remote", "--symref", repoURL, "HEAD", "refs/heads/*")
 	if err != nil {
-		return "", err
-	}
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "ref:") || !strings.HasSuffix(line, "\tHEAD") {
-			continue
-		}
-		ref := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "ref:"), "\tHEAD"))
-		return strings.TrimPrefix(ref, "refs/heads/"), nil
-	}
-	return "", nil
-}
-
-// remoteBranches 查询远端 refs/heads 下的全部分支名称。
-func (s Service) remoteBranches(ctx context.Context, repoURL string) ([]string, error) {
-	out, err := s.output(ctx, "", "ls-remote", "--heads", repoURL)
-	if err != nil {
-		return nil, err
+		return RemoteBranches{}, err
 	}
 
 	seen := map[string]bool{}
+	defaultBranch := ""
 	var branches []string
 	for _, line := range strings.Split(out, "\n") {
+		if branch, ok := parseHeadSymref(line); ok {
+			defaultBranch = branch
+			continue
+		}
 		branch, ok := parseHeadRef(line)
 		if !ok || seen[branch] {
 			continue
@@ -233,10 +213,21 @@ func (s Service) remoteBranches(ctx context.Context, repoURL string) ([]string, 
 		branches = append(branches, branch)
 	}
 	sort.Strings(branches)
-	return branches, nil
+	return RemoteBranches{Default: defaultBranch, Branches: branches}, nil
 }
 
-// parseHeadRef 从 git ls-remote --heads 的单行输出中解析分支名称。
+// parseHeadSymref 从 git ls-remote --symref 的 HEAD 行中解析默认分支名称。
+func parseHeadSymref(line string) (string, bool) {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "ref:") || !strings.HasSuffix(line, "\tHEAD") {
+		return "", false
+	}
+	ref := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "ref:"), "\tHEAD"))
+	branch := strings.TrimPrefix(ref, "refs/heads/")
+	return branch, branch != ""
+}
+
+// parseHeadRef 从 git ls-remote 的 refs/heads 单行输出中解析分支名称。
 func parseHeadRef(line string) (string, bool) {
 	parts := strings.SplitN(strings.TrimSpace(line), "\t", 2)
 	if len(parts) != 2 {
