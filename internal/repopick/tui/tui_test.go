@@ -659,66 +659,66 @@ func TestSelectedLineUsesAnimatedCursorWithoutReverseBackground(t *testing.T) {
 	}
 }
 
-func TestStylesUseCatppuccinMochaPalette(t *testing.T) {
-	if got := paneTitleFocusedStyle.GetForeground(); got != lipgloss.Color("#89b4fa") {
-		t.Fatalf("focused pane title foreground = %#v, want Catppuccin Mocha blue", got)
+func TestStylesUseTokyoNightMoonPalette(t *testing.T) {
+	if got := paneTitleFocusedStyle.GetForeground(); got != lipgloss.Color("#82aaff") {
+		t.Fatalf("focused pane title foreground = %#v, want Tokyo Night Moon blue", got)
 	}
-	if got := registryNameStyle(false).GetForeground(); got != lipgloss.Color("#cba6f7") {
-		t.Fatalf("registry name foreground = %#v, want Catppuccin Mocha mauve", got)
+	if got := registryNameStyle(false).GetForeground(); got != lipgloss.Color("#c099ff") {
+		t.Fatalf("registry name foreground = %#v, want Tokyo Night Moon magenta", got)
 	}
-	if got := registryUpdatedAtStyle(false).GetForeground(); got != lipgloss.Color("#f9e2af") {
-		t.Fatalf("registry updated time foreground = %#v, want Catppuccin Mocha yellow", got)
+	if got := registryUpdatedAtStyle(false).GetForeground(); got != lipgloss.Color("#ffc777") {
+		t.Fatalf("registry updated time foreground = %#v, want Tokyo Night Moon yellow", got)
 	}
-	if got := statusHelpStyle.GetForeground(); got != lipgloss.Color("#6c7086") {
-		t.Fatalf("status help foreground = %#v, want Catppuccin Mocha overlay0", got)
+	if got := statusHelpStyle.GetForeground(); got != lipgloss.Color("#636da6") {
+		t.Fatalf("status help foreground = %#v, want Tokyo Night Moon comment", got)
 	}
-	if got := statusTextStyle.GetForeground(); got != lipgloss.Color("#94e2d5") {
-		t.Fatalf("status text foreground = %#v, want Catppuccin Mocha teal", got)
+	if got := statusTextStyle.GetForeground(); got != lipgloss.Color("#4fd6be") {
+		t.Fatalf("status text foreground = %#v, want Tokyo Night Moon teal", got)
 	}
-	if got := statusHelpKeyStyle.GetForeground(); got != lipgloss.Color("#f9e2af") {
-		t.Fatalf("status help key foreground = %#v, want Catppuccin Mocha yellow", got)
+	if got := statusHelpKeyStyle.GetForeground(); got != lipgloss.Color("#ffc777") {
+		t.Fatalf("status help key foreground = %#v, want Tokyo Night Moon yellow", got)
 	}
-	if got := statusHelpDescStyle.GetForeground(); got != lipgloss.Color("#a6adc8") {
-		t.Fatalf("status help desc foreground = %#v, want Catppuccin Mocha subtext0", got)
+	if got := statusHelpDescStyle.GetForeground(); got != lipgloss.Color("#737aa2") {
+		t.Fatalf("status help desc foreground = %#v, want Tokyo Night Moon dark5", got)
 	}
-	if got := modalFieldValueStyle.GetForeground(); got != lipgloss.Color("#cdd6f4") {
-		t.Fatalf("modal field value foreground = %#v, want Catppuccin Mocha text", got)
+	if got := modalFieldValueStyle.GetForeground(); got != lipgloss.Color("#c8d3f5") {
+		t.Fatalf("modal field value foreground = %#v, want Tokyo Night Moon text", got)
 	}
-	if got := treeMetaValueStyle("registry").GetForeground(); got != lipgloss.Color("#cba6f7") {
-		t.Fatalf("tree registry foreground = %#v, want Catppuccin Mocha mauve", got)
+	if got := treeMetaValueStyle("registry").GetForeground(); got != lipgloss.Color("#c099ff") {
+		t.Fatalf("tree registry foreground = %#v, want Tokyo Night Moon magenta", got)
 	}
-	if got := treeMetaValueStyle("url").GetForeground(); got != lipgloss.Color("#89dceb") {
-		t.Fatalf("tree url foreground = %#v, want Catppuccin Mocha sky", got)
+	if got := treeMetaValueStyle("url").GetForeground(); got != lipgloss.Color("#86e1fc") {
+		t.Fatalf("tree url foreground = %#v, want Tokyo Night Moon cyan", got)
 	}
-	if got := treeMetaValueStyle("branch").GetForeground(); got != lipgloss.Color("#a6e3a1") {
-		t.Fatalf("tree branch foreground = %#v, want Catppuccin Mocha green", got)
+	if got := treeMetaValueStyle("branch").GetForeground(); got != lipgloss.Color("#c3e88d") {
+		t.Fatalf("tree branch foreground = %#v, want Tokyo Night Moon green", got)
 	}
-	if got := treeMetaValueStyle("path").GetForeground(); got != lipgloss.Color("#fab387") {
-		t.Fatalf("tree path foreground = %#v, want Catppuccin Mocha peach", got)
+	if got := treeMetaValueStyle("path").GetForeground(); got != lipgloss.Color("#ff966c") {
+		t.Fatalf("tree path foreground = %#v, want Tokyo Night Moon orange", got)
 	}
-	if got := modalRegistryTitleStyle(false).GetForeground(); got != lipgloss.Color("#a6e3a1") {
-		t.Fatalf("add registry title foreground = %#v, want Catppuccin Mocha green", got)
+	if got := modalRegistryTitleStyle(false).GetForeground(); got != lipgloss.Color("#c3e88d") {
+		t.Fatalf("add registry title foreground = %#v, want Tokyo Night Moon green", got)
 	}
-	if got := modalRegistryTitleStyle(true).GetForeground(); got != lipgloss.Color("#fab387") {
-		t.Fatalf("edit registry title foreground = %#v, want Catppuccin Mocha peach", got)
+	if got := modalRegistryTitleStyle(true).GetForeground(); got != lipgloss.Color("#ff966c") {
+		t.Fatalf("edit registry title foreground = %#v, want Tokyo Night Moon orange", got)
 	}
-	if got := modalRegistryFieldValueStyle("Name", false).GetForeground(); got != lipgloss.Color("#cba6f7") {
-		t.Fatalf("modal registry name foreground = %#v, want Catppuccin Mocha mauve", got)
+	if got := modalRegistryFieldValueStyle("Name", false).GetForeground(); got != lipgloss.Color("#c099ff") {
+		t.Fatalf("modal registry name foreground = %#v, want Tokyo Night Moon magenta", got)
 	}
-	if got := modalRegistryFieldValueStyle("URL", false).GetForeground(); got != lipgloss.Color("#89dceb") {
-		t.Fatalf("modal registry URL foreground = %#v, want Catppuccin Mocha sky", got)
+	if got := modalRegistryFieldValueStyle("URL", false).GetForeground(); got != lipgloss.Color("#86e1fc") {
+		t.Fatalf("modal registry URL foreground = %#v, want Tokyo Night Moon cyan", got)
 	}
-	if got := modalRegistryFieldValueStyle("Branch", false).GetForeground(); got != lipgloss.Color("#a6e3a1") {
-		t.Fatalf("modal registry branch foreground = %#v, want Catppuccin Mocha green", got)
+	if got := modalRegistryFieldValueStyle("Branch", false).GetForeground(); got != lipgloss.Color("#c3e88d") {
+		t.Fatalf("modal registry branch foreground = %#v, want Tokyo Night Moon green", got)
 	}
-	if got := modalRegistryFieldValueStyle("Name", true).GetForeground(); got != lipgloss.Color("#f9e2af") {
-		t.Fatalf("modal registry active field foreground = %#v, want Catppuccin Mocha yellow", got)
+	if got := modalRegistryFieldValueStyle("Name", true).GetForeground(); got != lipgloss.Color("#ffc777") {
+		t.Fatalf("modal registry active field foreground = %#v, want Tokyo Night Moon yellow", got)
 	}
-	if got := modalBranchChoiceStyle(false).GetForeground(); got != lipgloss.Color("#a6e3a1") {
-		t.Fatalf("modal branch choice foreground = %#v, want Catppuccin Mocha green", got)
+	if got := modalBranchChoiceStyle(false).GetForeground(); got != lipgloss.Color("#c3e88d") {
+		t.Fatalf("modal branch choice foreground = %#v, want Tokyo Night Moon green", got)
 	}
-	if got := modalBranchSelectedLineStyle(70).GetBackground(); got != lipgloss.Color("#313244") {
-		t.Fatalf("selected branch background = %#v, want Catppuccin Mocha surface0", got)
+	if got := modalBranchSelectedLineStyle(70).GetBackground(); got != lipgloss.Color("#2f334d") {
+		t.Fatalf("selected branch background = %#v, want Tokyo Night Moon bg highlight", got)
 	}
 }
 
@@ -1119,8 +1119,8 @@ func TestBranchSelectorHighlightsSelectedRowWithBackground(t *testing.T) {
 	if width := lipgloss.Width(plainText(selectedLine)); width < 70 {
 		t.Fatalf("selected line width = %d in %q, want row highlight to span list width", width, plainText(selectedLine))
 	}
-	if got := modalBranchSelectedLineStyle(70).GetBackground(); got != lipgloss.Color("#313244") {
-		t.Fatalf("selected background = %#v, want Catppuccin Mocha surface0", got)
+	if got := modalBranchSelectedLineStyle(70).GetBackground(); got != lipgloss.Color("#2f334d") {
+		t.Fatalf("selected background = %#v, want Tokyo Night Moon bg highlight", got)
 	}
 }
 
@@ -1184,22 +1184,44 @@ func TestEditRepositoryShowsPrefilledModalAndPersists(t *testing.T) {
 	}
 }
 
-func TestRegistryModalInactiveURLAlignsAfterNameCursor(t *testing.T) {
+func TestEditRepositoryTabToURLMovesCursorToEnd(t *testing.T) {
+	store := &memoryStore{cfg: config.Config{
+		Repositories: []config.Repository{{Name: "official", URL: "https://github.com/org/tools"}},
+	}}
+	m := newModel(context.Background(), app.Service{Registry: registry.NewService(store)}, t.TempDir())
+	m.repositories = store.cfg.Repositories
+
+	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	m.input.SetCursor(3)
+	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyTab})
+
+	if m.mode != modeAddURL {
+		t.Fatalf("mode = %v, want URL focus", m.mode)
+	}
+	if got, want := m.input.Position(), len([]rune(m.input.Value())); got != want {
+		t.Fatalf("cursor position = %d, want URL end %d", got, want)
+	}
+}
+
+func TestRegistryModalOmitsInputPrompt(t *testing.T) {
 	m := newModel(context.Background(), app.Service{}, t.TempDir())
-	m.mode = modeAddName
+	m, _ = m.focusAddName("")
 	m.pendingURL = "git@github.com:anthropics/skills.git"
 
 	lines := plainBlock(m.addRepositoryModalView())
 	nameLine := lineContaining(lines, "Name")
 	urlLine := lineContaining(lines, m.pendingURL)
-	cursorCol := strings.Index(nameLine, ">")
+	nameCol := strings.Index(nameLine, "name")
 	urlCol := strings.Index(urlLine, m.pendingURL)
 
-	if cursorCol < 0 || urlCol < 0 {
-		t.Fatalf("modal lines = %#v, want name cursor and url", lines)
+	if strings.Contains(nameLine, ">") {
+		t.Fatalf("name line = %q, want no input prompt", nameLine)
 	}
-	if urlCol != cursorCol+2 {
-		t.Fatalf("url column = %d, cursor column = %d in %#v, want url aligned with input text after prompt", urlCol, cursorCol, lines)
+	if nameCol < 0 || urlCol < 0 {
+		t.Fatalf("modal lines = %#v, want name placeholder and url", lines)
+	}
+	if urlCol != nameCol {
+		t.Fatalf("url column = %d, name column = %d in %#v, want aligned field values", urlCol, nameCol, lines)
 	}
 }
 
@@ -1217,10 +1239,13 @@ func TestRegistryModalColumnsStayStableWhenURLInputChanges(t *testing.T) {
 	m.input.SetValue("i")
 	inputLines := plainBlock(m.addRepositoryModalView())
 	inputNameLine := lineContaining(inputLines, "aa")
-	inputURLLine := lineContaining(inputLines, "> i")
+	inputURLLine := lineContaining(inputLines, "URL    :")
 	inputNameCol := strings.Index(inputNameLine, "aa")
 	inputURLCol := strings.Index(inputURLLine, "i")
 
+	if strings.Contains(inputURLLine, ">") {
+		t.Fatalf("url line = %q, want no input prompt", inputURLLine)
+	}
 	if placeholderNameCol < 0 || placeholderURLCol < 0 || inputNameCol < 0 || inputURLCol < 0 {
 		t.Fatalf("modal lines before = %#v, after = %#v, want name and URL input columns", placeholderLines, inputLines)
 	}

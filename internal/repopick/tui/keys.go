@@ -381,6 +381,7 @@ func (m model) focusAddName(value string) (model, tea.Cmd) {
 	m.mode = modeAddName
 	m.input.Placeholder = "name"
 	m.input.SetValue(value)
+	m.input.CursorEnd()
 	return m.focusInput()
 }
 
@@ -389,6 +390,7 @@ func (m model) focusAddURL(value string) (model, tea.Cmd) {
 	m.mode = modeAddURL
 	m.input.Placeholder = "repo url"
 	m.input.SetValue(value)
+	m.input.CursorEnd()
 	return m.focusInput()
 }
 

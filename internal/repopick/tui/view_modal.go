@@ -30,11 +30,11 @@ func (m model) addRepositoryModalView() string {
 
 	name := m.pendingName
 	if m.mode == modeAddName {
-		name = m.input.View()
+		name = m.registryInputView()
 	}
 	repoURL := m.pendingURL
 	if m.mode == modeAddURL {
-		repoURL = m.input.View()
+		repoURL = m.registryInputView()
 	}
 	branch := m.pendingBranch
 	if strings.TrimSpace(branch) == "" {
@@ -42,7 +42,7 @@ func (m model) addRepositoryModalView() string {
 	}
 	branchValue := branch
 	if m.mode == modeAddBranch {
-		branchValue = m.input.View()
+		branchValue = m.registryInputView()
 	}
 	activeRow := -1
 	if m.mode == modeAddName {
@@ -53,13 +53,6 @@ func (m model) addRepositoryModalView() string {
 	}
 	if m.mode == modeAddBranch {
 		activeRow = 2
-	}
-	// 输入框自带 "> " 光标提示，非聚焦值对齐到提示后的内容起点，避免切换焦点时字段内容左右跳动。
-	if m.mode == modeAddName && strings.TrimSpace(repoURL) != "" {
-		repoURL = "  " + repoURL
-	}
-	if m.mode == modeAddURL && strings.TrimSpace(name) != "" {
-		name = "  " + name
 	}
 	fieldRows := [][2]string{
 		{"Name", name},
@@ -75,6 +68,13 @@ func (m model) addRepositoryModalView() string {
 	lines = append(lines, modalDividerLine(innerWidth), modalHintStyle.Render("[Tab/Shift+Tab] 切焦点  |  [输入] 搜索分支  |  [Enter] 确认  |  [Esc] 取消"))
 
 	return renderModal(strings.Join(lines, "\n"), modalWidth)
+}
+
+// registryInputView 返回 registry 表单输入内容，不渲染 textinput 默认提示符。
+func (m model) registryInputView() string {
+	input := m.input
+	input.Prompt = ""
+	return input.View()
 }
 
 // deleteRepositoryConfirmModalView 渲染 registry 删除确认弹框。
